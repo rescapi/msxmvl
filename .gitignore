@@ -1,0 +1,40 @@
+# Baseline source checkouts (fetched, not part of mvcz80; some are CC BY-SA — never vendored into mvcz80 code)
+vendor/
+
+# Build & measurement artifacts
+*.rom
+*.rel
+*.ihx
+*.map
+*.sym
+*.noi
+*.lst
+*_BSS.bin
+*_DATA.bin
+build/
+out/
+
+# Node / Python harness tooling
+node_modules/
+__pycache__/
+*.pyc
+.venv/
+
+# Editor / OS
+.DS_Store
+*.swp
+
+# Large copyrighted binary — re-downloadable via URL in reference/README.md (keep distilled .md)
+reference/*.pdf
+
+# Archived duplicate part-files from parallel generation
+lib/gen/_dup_parts/
+test/gen/_dup_parts/
+
+# Scratch logs
+benchmarks/_*.log
+compat/.refcache/
+scratchpad/
+
+# vendor-dependent (msxgl.h) showcase demo; not library code
+g3d_cube.c
