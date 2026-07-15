@@ -60,6 +60,16 @@ run "$H/mutex_01_locks.c"     "" a5 8
 run "$H/localize_01_lang.c"   "localize.c" a5 8
 run "$H/crypt_01_roundtrip.c" "crypt.c" a5 8
 
+# Sound (MSX-MUSIC) on MSX1 — the FMPAC is a CARTRIDGE (its own OPLL + BIOS), so it works on an
+# MSX1 just as on an MSX2. Verified: msxmusic_01_note PASSes on C-BIOS_MSX1 + fmpac. Skipped on
+# CI (the FMPAC BIOS ROM is copyrighted); runs locally where the ROM is present.
+if [ -n "${CI:-}" ] || [ -n "${MSXMVL_SKIP_FMPAC:-}" ]; then
+  echo "  msxmusic_01_note.c: SKIP (FMPAC BIOS ROM is copyrighted; not available in CI)"
+else
+  EX_EXT=fmpac EX_DBG="Panasoft SW-M004 FMPAC regs" EX_DBGOFS=0x30 EX_DBGLEN=1 EX_DBGWANT=50 \
+    run "$H/msxmusic_01_note.c" "bios.c system.c msx-music.c" a5 8
+fi
+
 echo
 [ $fail -eq 0 ] && echo "ALL MSX1 EXAMPLES PASS" || echo "SOME MSX1 EXAMPLES FAILED"
 exit $fail
