@@ -1,0 +1,43 @@
+# msxmvl — compile and RUN every documentation example on a real emulator.
+# Toolchain is just SDCC + openMSX (openMSX bundles the free C-BIOS), so no copyrighted ROMs.
+# The DOS examples are not run here: they need an MSX-DOS/Nextor boot disk that cannot ship.
+# Their sources are published and were verified locally; run_all.sh does not include them.
+name: examples
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  examples:
+    runs-on: ubuntu-latest
+    env:
+      SDL_VIDEODRIVER: dummy      # headless: no window, no audio device
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDCC + openMSX
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends sdcc openmsx
+
+      - name: Sanity — toolchain present, C-BIOS bootable
+        run: |
+          sdcc --version | head -1
+          sdasz80 -h >/dev/null 2>&1 || true
+          command -v makebin
+          # openMSX ships C-BIOS (GPL). Fail loudly here if the target machine is missing,
+          # rather than deep inside the example loop.
+          timeout 25 openmsx -machine C-BIOS_MSX2 -command "after time 2 { exit 0 }" \
+            || { echo "::error::C-BIOS_MSX2 machine not available in this openMSX"; exit 1; }
+
+      - name: Documentation examples — MSX2 (+ drift guard)
+        run: |
+          cd docs/examples
+          bash run_all.sh
+
+      - name: Documentation examples — MSX1
+        run: |
+          cd docs/examples
+          bash run_all_msx1.sh

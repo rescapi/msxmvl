@@ -13,9 +13,9 @@
 # cannot run in public CI. The ROM-based examples need none of it.
 set -uo pipefail
 export SDL_VIDEODRIVER=dummy
-ROOT=/home/remco/dev/msxmvl
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # repo root (portable; was hardcoded)
 CRT0SRC=$ROOT/lib/ext/crt0_dos.asm     # our own crt0; no vendored SDK, no z88dk
-OMX=/home/remco/tools/openmsx/bin/openmsx
+OMX="${OPENMSX:-$(command -v openmsx || echo /home/remco/tools/openmsx/bin/openmsx)}"
 MACHINE=Philips_NMS_8245-16
 
 # EX_DOS=1 -> MSX-DOS 1 disk, no DOS2 kernel. EX_DOS=2 (default) -> MSX-DOS 2.
