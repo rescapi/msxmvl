@@ -1,22 +1,31 @@
-// Objects may straddle a 16 KB segment boundary. Far_Read/Far_Write auto-split at
-// the edge: a block starting near the end of segment 19 continues into segment 20,
-// transparently. FAR_ADD / FAR arithmetic carries across segments too.
+// FAR POINTERS — data bigger than one segment "just works".
+//
+// Segments are 16 KB. A big world map, a long song, a wide tile row — these can be
+// larger than a single segment, so a block you read or write may START in one segment
+// and CONTINUE in the next. You do NOT have to split it yourself: Far_Write, Far_Read
+// and Far_Set notice the 16 KB edge and carry on into the following segment for you.
+//
+// Here: a strip of map tiles is stored right at the end of the level segment, so it
+// spills over into the next one. We write it as a single block and read it back whole —
+// the crossing is invisible. FAR(seg, 0x3FFE) is 2 bytes before the end of a segment.
 #include "farmem.h"
 volatile u8 __at(0xE000) R[8];
 
+#define SEG_MAP    19       // first segment of a level map that is bigger than 16 KB
+
 void main(void)
 {
-	u8 src[4] = { 0xC0, 0xC1, 0xC2, 0xC3 };
-	u8 back[4];
+	u8 tiles[4] = { 10, 11, 12, 13 };   // four map tiles to store
+	u8 loaded[4];                       // read them back here
 	MemSeg_Init(16);
 
-	// start two bytes before the end of segment 19 -> spills into segment 20
-	Far_Write(FAR(19, 0x3FFE), src, 4);
-	Far_Read (FAR(19, 0x3FFE), back, 4);
+	// Start 2 bytes before the segment's end, so tiles 12 and 13 land in the NEXT segment.
+	Far_Write(FAR(SEG_MAP, 0x3FFE), tiles, 4);      // one call — the split is automatic
+	Far_Read (FAR(SEG_MAP, 0x3FFE), loaded, 4);     // read the whole strip back
 
-	R[1] = Far_Peek(FAR(19, 0x3FFF));       // 0xC1 — last byte of seg 19
-	R[2] = Far_Peek(FAR(20, 0x0000));       // 0xC2 — first byte of seg 20
-	R[0] = (back[0]==0xC0 && back[1]==0xC1 && back[2]==0xC2 && back[3]==0xC3 &&
-	        R[1]==0xC1 && R[2]==0xC2) ? 0xA5 : 0x00;
+	R[1] = Far_Peek(FAR(SEG_MAP,     0x3FFF));       // tile 11 — last byte of segment 19
+	R[2] = Far_Peek(FAR(SEG_MAP + 1, 0x0000));       // tile 12 — first byte of segment 20
+	R[0] = (loaded[0]==10 && loaded[1]==11 && loaded[2]==12 && loaded[3]==13 &&
+	        R[1]==11 && R[2]==12) ? 0xA5 : 0x00;
 	for (;;) {}
 }

@@ -1,110 +1,149 @@
 # Segment Windowing (`memseg`)
 
-The low-level layer for the **MSX2 RAM memory mapper** — the hardware that lets a machine hold
-more than 64 KB of RAM. Link `memseg.c`, include `memseg.h`. Most code uses the higher-level
-[Far Pointers](Far-Pointers.md) API on top of this; reach for `memseg` directly when you want to
-map a segment and run your own code against the window.
+This is the machinery underneath [Far Pointers](Far-Pointers.md) — the raw way to swap 16 KB
+**segments** of mapper RAM in and out of the Z80's view. Most code should use the friendlier
+[Far Pointers](Far-Pointers.md) API and never come here. Reach for `memseg` directly only when you
+want to map a segment yourself and run your own tight loop against it.
 
-> **MSX2 only — and it will not tell you.** An MSX1 has no RAM memory mapper. `memseg` will still
-> *appear* to work there: `MemSeg_SetWindow` writes to a port that isn't answered, and
-> `MemSeg_GetWindow` then reads the **software shadow**, which faithfully reports the segment you
-> asked for. The shadow is not a presence check — it's a cache of your own intent. Only
-> [`farmem`](Far-Pointers.md), which actually reads through the window, notices that nothing is
-> mapped. If you need a lot of code (not data) on an MSX1, use
-> [Code Banking](Code-Banking.md) instead — MegaROM banking is cartridge hardware and works there.
+> Link `memseg.c`, include `memseg.h`.
 
-## Why a shadow is mandatory
+> **Reading the examples.** Each snippet below is a complete, auto-tested program. The
+> `volatile u8 __at(0xE000) R[...]` buffer and the closing `for (;;) {}` are just test scaffolding
+> (the harness reads `R[]` back; `R[0] = 0xA5` means "passed"); in your own code you keep only the
+> `MemSeg_*` calls. ([full explanation](Getting-Started.md))
 
-The Z80 sees 64 KB as four 16 KB pages. The RAM mapper swaps 16 KB **segments** into a page by
-writing the segment number to an I/O port (`0xFE` for page 2). Two hard facts shape the API:
+## What "windowing" means
 
-- **The port is write-only.** There is no way to ask the hardware "which segment is mapped
-  right now?" So `memseg` keeps a **RAM shadow** of the current segment, updated on every write.
-  That shadow is the only way to save-and-restore a temporary switch.
-- **You must window a page you're *not* running from.** `memseg` uses **page 2** (`0x8000`–
-  `0xBFFF`): your code is in page 1, your stack in page 3, so page 2 is the safe one to repurpose.
+The Z80 addresses 64 KB, split into four 16 KB **pages**. A RAM mapper has many more 16 KB
+**segments** than that (512 KB = 32 segments), and it lets you choose which segment appears in a
+page — like sliding one interchangeable cartridge at a time into a slot you can see through. That
+visible slot is the **window**. `memseg` uses **page 2** (`0x8000`–`0xBFFF`) for it: your program
+runs in page 1 and your stack lives in page 3, so page 2 is the safe one to repurpose.
 
-On C-BIOS/openMSX the mapper is 512 KB = **32 segments** (numbers `0..31`).
+Two hardware facts shape the whole API:
+
+- **The mapper register is write-only.** You can tell the hardware "show segment 20 now", but you
+  can't ask it "which segment is showing?". So `memseg` keeps a **software note** (a "shadow") of
+  the current segment, updated every time you change it. That shadow is what makes a
+  save-and-restore possible.
+- **Init imposes a mapping, it doesn't discover one.** Because the boot segment can't be read
+  back, `MemSeg_Init` *sets* a known "home" segment rather than detecting whatever was there. From
+  that point on the shadow always matches the hardware.
+
+> **MSX2 only — and it fails quietly.** An MSX1 has no RAM mapper. On MSX1, `MemSeg_SetWindow`
+> writes to a port nothing answers, and `MemSeg_GetWindow` then returns the **shadow** — which
+> faithfully reports the segment you *asked* for, even though nothing was actually mapped. The
+> shadow is a record of your intent, not a presence check. Only [`farmem`](Far-Pointers.md), which
+> reads back through the window, can tell that nothing is there. If you need more *code* (not data)
+> on an MSX1, use [Code Banking](Code-Banking.md) instead — MegaROM banking is cartridge hardware
+> and works on every MSX.
 
 ---
 
-## `MemSeg_Init` / `MemSeg_SetWindow` / `MemSeg_GetWindow`
+## Pick a segment — `MemSeg_Init` / `MemSeg_SetWindow` / `MemSeg_GetWindow`
 
 ```c
-void   MemSeg_Init(MemSeg home);       // map `home` into the window and sync the shadow
-void   MemSeg_SetWindow(MemSeg seg);   // map `seg`, update the shadow (no save)
-MemSeg MemSeg_GetWindow(void);         // read the shadow: what's mapped now
+void   MemSeg_Init(MemSeg home);       // start up: map `home` and record it in the shadow
+void   MemSeg_SetWindow(MemSeg seg);   // show `seg` now (updates the shadow)
+MemSeg MemSeg_GetWindow(void);         // which segment is showing? (reads the shadow)
 ```
 
-Call `MemSeg_Init` once at startup with a "home" segment (one not used by your stack/data).
-Because the boot segment can't be read back, `Init` *imposes* a known mapping rather than
-discovering one — from then on the shadow always matches hardware.
-
-**Example — set and read back the window.**
+Call `MemSeg_Init` once at startup with a "home" segment. After that, `SetWindow` flips the visible
+segment and `GetWindow` tells you which one it is.
 
 ```c
+// SEGMENT WINDOWING — the raw mechanism behind "banking".
+//
+// The Z80 can only address 64 KB at once, but an MSX memory mapper holds much more
+// (512 KB and up), split into 16 KB "segments" (think: interchangeable cartridges).
+// You choose which segment is visible through a fixed "window" at address 0x8000.
+// Only ONE segment shows through the window at a time; swapping is instant.
+//
+// Snag: the hardware register that selects the segment is WRITE-ONLY — you can set it
+// but not read it back. So the library keeps a software note of the current segment.
+// MemSeg_Init picks a starting ("home") segment; MemSeg_SetWindow swaps another one in;
+// MemSeg_GetWindow tells you which is showing right now.
+//
+// Here: a game keeps its title screen in one segment and level 1 in another, and flips
+// the window between them.
 #include "memseg.h"
 volatile u8 __at(0xE000) R[4];
 
+#define SEG_TITLE   16      // 16 KB segment holding the title screen
+#define SEG_LEVEL1  20      // ...and the one holding level 1
+
 void main(void)
 {
-	MemSeg_Init(16);                    // window = segment 16
-	R[1] = MemSeg_GetWindow();          // 16
+	MemSeg_Init(SEG_TITLE);              // start with the title-screen segment in the window
+	R[1] = MemSeg_GetWindow();           // which segment is showing? -> 16 (SEG_TITLE)
 
-	MemSeg_SetWindow(20);               // now segment 20 is in the window
-	R[2] = MemSeg_GetWindow();          // 20
+	MemSeg_SetWindow(SEG_LEVEL1);        // flip to the level-1 segment
+	R[2] = MemSeg_GetWindow();           // now showing -> 20 (SEG_LEVEL1)
 
-	R[0] = (R[1] == 16 && R[2] == 20) ? 0xA5 : 0x00;
+	R[0] = (R[1] == SEG_TITLE && R[2] == SEG_LEVEL1) ? 0xA5 : 0x00;
 	for (;;) {}
 }
 ```
 
-Runs to `R[] = a5 10 14` (`0x10=16`, `0x14=20`). *(tested: `memseg_01_setget.c`)*
+Runs to `R[] = a5 10 14` (`0x10 = 16`, `0x14 = 20`). *(tested: `memseg_01_setget.c`)*
 
 ---
 
-## `MemSeg_Window` / `MemSeg_Restore`
+## Borrow and restore — `MemSeg_Window` / `MemSeg_Restore`
 
 ```c
-MemSeg MemSeg_Window(MemSeg seg);   // map `seg`, RETURN the segment that was there
+MemSeg MemSeg_Window(MemSeg seg);   // show `seg`, and RETURN the one that was showing
 void   MemSeg_Restore(MemSeg prev); // put `prev` back
 ```
 
-The save-and-restore pair. `MemSeg_Window` maps a new segment and hands you the previous one (from
-the shadow) so you can restore it — the correct pattern for a *temporary* switch, and what makes
-nested access safe (each level restores what it found).
-
-**Example — map a segment, use it, restore.**
+The safe pattern for a *temporary* switch: `MemSeg_Window` maps a new segment and hands you back
+the old one, so you can always return to exactly where you were. Anything you read or write at
+`0x8000` after the switch hits the newly mapped segment — and each segment is its own physical RAM,
+so your home segment keeps its contents while you're away.
 
 ```c
+// SEGMENT WINDOWING — borrow a segment, then put things back.
+//
+// Most of the time your game runs from its "home" segment. Now and then you need to
+// reach into another one — read a tile from the level-data segment, copy a sprite out
+// of an asset segment — and then carry on as before.
+//
+// MemSeg_Window(seg) swaps a segment into the window AND hands back the one that was
+// there, so you can MemSeg_Restore() it afterwards. This is the safe pattern: you can
+// never "forget" which segment you were on. Whatever you write through the window at
+// 0x8000 goes into REAL mapper RAM — each segment is its own physical memory, so the
+// home segment keeps its contents while you are away.
 #include "memseg.h"
 volatile u8 __at(0xE000) R[4];
 
+#define SEG_HOME    16      // the segment the game normally runs from
+#define SEG_ASSETS  17      // a segment we want to peek into for a moment
+
 void main(void)
 {
-	MemSeg_Init(16);                        // home = 16
-	*(volatile u8*)0x8000 = 0xAA;           // write into segment 16
+	MemSeg_Init(SEG_HOME);                  // home segment is in the window
+	*(volatile u8*)0x8000 = 0xAA;           // store something in home (a health value, say)
 
-	MemSeg prev = MemSeg_Window(17);        // map 17, prev == 16
-	*(volatile u8*)0x8000 = 0xBB;           // write into segment 17
-	MemSeg_Restore(prev);                   // back to 16
+	MemSeg prev = MemSeg_Window(SEG_ASSETS); // borrow the assets segment; remember home (prev)
+	*(volatile u8*)0x8000 = 0xBB;           // this write lands in SEG_ASSETS, not home
+	MemSeg_Restore(prev);                   // done — put the home segment back
 
-	R[1] = prev;                            // 16
-	R[2] = *(volatile u8*)0x8000;           // 0xAA — segment 16 kept its value
-	R[0] = (prev == 16 && R[2] == 0xAA) ? 0xA5 : 0x00;
+	R[1] = prev;                            // prev is 16 (SEG_HOME): we knew where to return
+	R[2] = *(volatile u8*)0x8000;           // 0xAA — home never lost its value while we were away
+	R[0] = (prev == SEG_HOME && R[2] == 0xAA) ? 0xA5 : 0x00;
 	for (;;) {}
 }
 ```
 
-Runs to `R[] = a5 10 aa` — writing `0xBB` through the window while segment 17 was mapped did not
-disturb segment 16's `0xAA`. The two segments are physically distinct RAM. *(tested:
-`memseg_02_window.c`)*
+Runs to `R[] = a5 10 aa` — writing `0xBB` while the assets segment was mapped left the home
+segment's `0xAA` untouched, because they are physically different RAM. *(tested: `memseg_02_window.c`)*
 
-> **Window base is `0x8000`.** Anything you read/write at `0x8000..0xBFFF` after a `Window` call
-> hits the mapped segment. The [Far Pointers](Far-Pointers.md) API wraps this so you don't handle
-> raw window addresses yourself.
+> Everything you touch at `0x8000..0xBFFF` after a `Window` call hits the mapped segment. The
+> [Far Pointers](Far-Pointers.md) API wraps all of this so you deal in handles, not raw window
+> addresses — start there unless you specifically need the window yourself.
 
 ## See also
 
-- [Far Pointers](Far-Pointers.md) — `FarPtr`, block copy, and the scoped-borrow `Far_With`, all
-  built on these primitives.
+- [Far Pointers](Far-Pointers.md) — the everyday API: handles, block copy, and the safe
+  scoped-borrow `Far_With`, all built on these primitives.
+- [Code Banking](Code-Banking.md) — the same "bigger than 64 KB" idea, but for program *code*.
