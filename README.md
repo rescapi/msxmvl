@@ -10,9 +10,9 @@ If you know some C and have never written a line of Z80, you are the person this
 
 ## New here?
 
-1. **[Getting Started](Getting-Started.md)** — install two packages, build a ROM, run it. Ten minutes.
-2. **[VDP Access](VDP-Access.md)** — screen modes: what you can draw on, and how to pick one.
-3. **[Why msxmvl](Why-msxmvl.md)** — what this library is for, and what it isn't.
+1. **[Getting Started](docs/Getting-Started.md)** — install two packages, build a ROM, run it. Ten minutes.
+2. **[VDP Access](docs/VDP-Access.md)** — screen modes: what you can draw on, and how to pick one.
+3. **[Why msxmvl](docs/Why-msxmvl.md)** — what this library is for, and what it isn't.
 
 ## Beyond 64 KB — the part that matters
 
@@ -21,37 +21,37 @@ where most libraries stop and hand you the bare hardware.
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [Code Banking](Code-Banking.md) | `bankpack` | run **more code than fits in 64 KB**. Write plain C, list your functions in a manifest, get a MegaROM. Works on MSX1 too |
-| [Far Pointers](Far-Pointers.md) | `farmem` | use **more than 64 KB of RAM**, addressed by handle — read, write, fill, peek, poke |
-| [Segment Windowing](Segment-Windowing.md) | `memseg` | the layer underneath: drive the MSX2 memory mapper directly |
+| [Code Banking](docs/Code-Banking.md) | `bankpack` | run **more code than fits in 64 KB**. Write plain C, list your functions in a manifest, get a MegaROM. Works on MSX1 too |
+| [Far Pointers](docs/Far-Pointers.md) | `farmem` | use **more than 64 KB of RAM**, addressed by handle — read, write, fill, peek, poke |
+| [Segment Windowing](docs/Segment-Windowing.md) | `memseg` | the layer underneath: drive the MSX2 memory mapper directly |
 
 ## Graphics
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [VDP Access](VDP-Access.md) | `vdp` | **screen modes**, and reading/writing video memory |
-| [Bitmap Drawing](Bitmap-Drawing.md) | `draw` | pixels, lines, boxes, circles — drawn by the V9938's blitter, not the CPU |
-| [Text Output](Text-Output.md) | `print` | strings, numbers, formatted text |
-| [Tilemaps](Tilemaps.md) | `tile` | build a screen out of a map of tile numbers |
-| [Hardware Scroll](Hardware-Scroll.md) | `scroll` | scroll a map bigger than the screen |
-| [Sprite Transforms](Sprite-FX.md) | `sprite_fx` | flip and mask sprite shapes in RAM |
-| [Double Buffering](Double-Buffering.md) | `display` | draw off-screen, then flip — no flicker |
-| [3D Math](3D-Math.md) | `g3d` | fixed-point multiply and sin/cos tables for software 3D |
+| [VDP Access](docs/VDP-Access.md) | `vdp` | **screen modes**, and reading/writing video memory |
+| [Bitmap Drawing](docs/Bitmap-Drawing.md) | `draw` | pixels, lines, boxes, circles — drawn by the V9938's blitter, not the CPU |
+| [Text Output](docs/Text-Output.md) | `print` | strings, numbers, formatted text |
+| [Tilemaps](docs/Tilemaps.md) | `tile` | build a screen out of a map of tile numbers |
+| [Hardware Scroll](docs/Hardware-Scroll.md) | `scroll` | scroll a map bigger than the screen |
+| [Sprite Transforms](docs/Sprite-FX.md) | `sprite_fx` | flip and mask sprite shapes in RAM |
+| [Double Buffering](docs/Double-Buffering.md) | `display` | draw off-screen, then flip — no flicker |
+| [3D Math](docs/3D-Math.md) | `g3d` | fixed-point multiply and sin/cos tables for software 3D |
 
 ## Sound
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [Sound (PSG)](Sound-PSG.md) | `psg` | the 3-channel chip **every** MSX has — start here |
-| [Sound (SCC)](Sound-SCC.md) | `scc` | Konami's wavetable chip: 5 channels, you design the waveform |
-| [Sound (MSX-MUSIC)](Sound-MSX-Music.md) | `msx-music` | FM synthesis with 15 ready-made instruments (FM-PAC) |
-| [Sound (MSX-AUDIO)](Sound-MSX-Audio.md) | `msx-audio` | the Y8950 — full FM control **and ADPCM sample playback** |
+| [Sound (PSG)](docs/Sound-PSG.md) | `psg` | the 3-channel chip **every** MSX has — start here |
+| [Sound (SCC)](docs/Sound-SCC.md) | `scc` | Konami's wavetable chip: 5 channels, you design the waveform |
+| [Sound (MSX-MUSIC)](docs/Sound-MSX-Music.md) | `msx-music` | FM synthesis with 15 ready-made instruments (FM-PAC) |
+| [Sound (MSX-AUDIO)](docs/Sound-MSX-Audio.md) | `msx-audio` | the Y8950 — full FM control **and ADPCM sample playback** |
 
 ## Input
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [Keyboard Input](Keyboard-Input.md) | `input` | which keys are held, and which were just pressed |
+| [Keyboard Input](docs/Keyboard-Input.md) | `input` | which keys are held, and which were just pressed |
 
 ## Disk
 
@@ -60,35 +60,35 @@ sector access, which needs no file system at all.
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [MSX-DOS 2 — file handles](MSX-DOS-2.md) | `dos` | open / read / write / close, subdirectories. **DOS 2 only** |
-| [MSX-DOS 1 — FCB](MSX-DOS-1.md) | `dos` | the older CP/M-style API. Runs on **DOS 1 *and* DOS 2** |
-| [Raw Sectors](Disk-Sectors.md) | `disk` | read and write sectors directly — no files, no FAT |
+| [MSX-DOS 2 — file handles](docs/MSX-DOS-2.md) | `dos` | open / read / write / close, subdirectories. **DOS 2 only** |
+| [MSX-DOS 1 — FCB](docs/MSX-DOS-1.md) | `dos` | the older CP/M-style API. Runs on **DOS 1 *and* DOS 2** |
+| [Raw Sectors](docs/Disk-Sectors.md) | `disk` | read and write sectors directly — no files, no FAT |
 
 ## Data
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [Memory Operations](Memory-Operations.md) | `memory` | copy and fill blocks of RAM, fast |
-| [Math Utilities](Math-Utilities.md) | `math` | ÷10 and %10, bit-reverse, random numbers |
-| [Fixed-Point](Fixed-Point.md) | `fixed_point` | fractions without floats (the Z80 has no FPU) |
-| [String Conversion](String-Conversion.md) | `string` | numbers → text |
-| [Compression](Compression.md) | `compress` | unpack RLEp data — fit more into the ROM |
-| [Encryption](Encryption.md) | `crypt` | save-game passwords, obfuscated blobs |
-| [Localization](Localization.md) | `localize` | one text table per language, switched at runtime |
+| [Memory Operations](docs/Memory-Operations.md) | `memory` | copy and fill blocks of RAM, fast |
+| [Math Utilities](docs/Math-Utilities.md) | `math` | ÷10 and %10, bit-reverse, random numbers |
+| [Fixed-Point](docs/Fixed-Point.md) | `fixed_point` | fractions without floats (the Z80 has no FPU) |
+| [String Conversion](docs/String-Conversion.md) | `string` | numbers → text |
+| [Compression](docs/Compression.md) | `compress` | unpack RLEp data — fit more into the ROM |
+| [Encryption](docs/Encryption.md) | `crypt` | save-game passwords, obfuscated blobs |
+| [Localization](docs/Localization.md) | `localize` | one text table per language, switched at runtime |
 
 ## Program structure
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [State Machines](State-Machines.md) | `fsm` | title → play → game-over, with enter/tick/leave callbacks |
-| [Mutexes](Mutexes.md) | `mutex` | 8 locks in one byte — keep the interrupt handler off the VDP |
-| [VBlank Sync](VBlank-Sync.md) | `vsync` | wait for the screen refresh; the heartbeat of every game loop |
+| [State Machines](docs/State-Machines.md) | `fsm` | title → play → game-over, with enter/tick/leave callbacks |
+| [Mutexes](docs/Mutexes.md) | `mutex` | 8 locks in one byte — keep the interrupt handler off the VDP |
+| [VBlank Sync](docs/VBlank-Sync.md) | `vsync` | wait for the screen refresh; the heartbeat of every game loop |
 
 ## System
 
 | Page | Module | What it gives you |
 |------|--------|-------------------|
-| [Real-Time Clock](Real-Time-Clock.md) | `clock` | date and time, plus 6 bytes of battery-backed save |
+| [Real-Time Clock](docs/Real-Time-Clock.md) | `clock` | date and time, plus 6 bytes of battery-backed save |
 
 ## Which machines does it run on?
 
