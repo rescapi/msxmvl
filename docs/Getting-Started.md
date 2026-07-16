@@ -89,18 +89,29 @@ static u8 total;            // also garbage — not zero
 …are both lies. Symptoms are baffling and intermittent. Read-only tables should be `const` anyway —
 they then live in ROM and cost you no RAM at all.
 
-## 5. How this library is tested (and how you can be too)
+## 5. How to read the examples (three lines you can ignore)
 
 Every example in these docs is a real program that gets compiled, booted on an emulated MSX, and
-checked. The trick is simple: the program writes a byte into RAM, and the harness reads it back out
-of the emulator.
+checked automatically — that's how we keep the docs honest. To make that possible, each example
+carries a little **test scaffolding**. It's the same three things every time, and **none of it is
+part of the library** — in your own code you'd write only the API calls in the middle:
 
 ```c
-volatile u8 __at(0xE000) R[8];   // a result buffer at a fixed address
+volatile u8 __at(0xE000) R[8];   // (1) a "results" buffer at a fixed address
+                                 //     __at is SDCC's "place this variable exactly here";
+                                 //     the double underscore marks a compiler keyword.
+// ... the real code — the API calls that the example is actually showing ...
 
-R[1] = something_we_measured;
-R[0] = (everything_checked_out) ? 0xA5 : 0x00;   // 0xA5 = pass
+R[1] = something_we_measured;    // (2) record what happened, so the tester can check it
+R[0] = (everything_checked_out) ? 0xA5 : 0x00;   //     R[0] = 0xA5 means "this example passed"
+
+for (;;) {}                      // (3) park the program — a cartridge has no OS to return to
 ```
+
+So when you read an example: skip the `R[...]` lines and the trailing `for (;;) {}`; the lines
+that matter are the `VDP_*` / `Far_*` / `Print_*` … calls. The harness reads `R[]` back out of the
+emulator and a run either produces `0xA5` or it doesn't — no screenshots, no eyeballing. It's a
+good pattern to steal for your own project.
 
 ```sh
 cd docs/examples

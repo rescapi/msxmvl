@@ -11,6 +11,12 @@ If you've hit "I'm out of RAM" on an MSX2, this is the page that fixes it.
 > Link `memseg.c farmem.c`, include `farmem.h`. Call `MemSeg_Init(home)` **once** at startup
 > before any `Far_*` call. Needs an MSX2 RAM mapper (see [the MSX1 note](Segment-Windowing.md)).
 
+> **Reading the examples.** Each snippet below is a complete, auto-tested program, so it carries a
+> little test scaffolding you can ignore in your own code: `volatile u8 __at(0xE000) R[...]` is a
+> results buffer the test harness reads back (`R[0] = 0xA5` means "passed"), and the closing
+> `for (;;) {}` just parks the program. **The lines that matter are the `Far_*` and `MemSeg_*`
+> calls.** ([full explanation](Getting-Started.md))
+
 ## The idea in one picture
 
 Mapper RAM is divided into **16 KB segments** (512 KB = 32 of them). A **far pointer** is just a

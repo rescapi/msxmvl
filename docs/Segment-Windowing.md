@@ -7,6 +7,11 @@ want to map a segment yourself and run your own tight loop against it.
 
 > Link `memseg.c`, include `memseg.h`.
 
+> **Reading the examples.** Each snippet below is a complete, auto-tested program. The
+> `volatile u8 __at(0xE000) R[...]` buffer and the closing `for (;;) {}` are just test scaffolding
+> (the harness reads `R[]` back; `R[0] = 0xA5` means "passed"); in your own code you keep only the
+> `MemSeg_*` calls. ([full explanation](Getting-Started.md))
+
 ## What "windowing" means
 
 The Z80 addresses 64 KB, split into four 16 KB **pages**. A RAM mapper has many more 16 KB

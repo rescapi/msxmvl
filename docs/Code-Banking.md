@@ -32,6 +32,10 @@ call *within* the same bank is a normal, free near-call.
 It looks like ordinary C. A function in one bank can call a function in another with a `far_`
 prefix; the tool wires up the rest.
 
+> In the `main.c` below, `volatile u8 __at(0xE000) R[8];` and the `R[0] = ...` line are just test
+> scaffolding (the harness reads `R[]` back to confirm the run); your real `main` is your game loop.
+> ([full explanation](Getting-Started.md))
+
 **A "gameplay" bank that calls a "scoring" bank:**
 
 ```c
