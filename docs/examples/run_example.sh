@@ -12,11 +12,11 @@
 # the other modules don't care about — so one harness covers every example.
 set -uo pipefail
 export SDL_VIDEODRIVER=dummy
-ROOT=/home/remco/dev/msxmvl
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # repo root (portable; was hardcoded)
 # Our own crt0 (lib/ext/crt0_rom16.asm) + SDCC's makebin. No vendored SDK, no z88dk:
 # `apt install sdcc openmsx` is the whole toolchain.
 CRT0SRC=$ROOT/lib/ext/crt0_rom16.asm
-OMX=/home/remco/tools/openmsx/bin/openmsx
+OMX="${OPENMSX:-$(command -v openmsx || echo /home/remco/tools/openmsx/bin/openmsx)}"
 EX="$1"; MODS="${2:-}"; WANT="${3:-a5}"; LEN="${4:-8}"
 
 # Target machine. EX_MACHINE=C-BIOS_MSX1 builds for (and boots on) an MSX1: the

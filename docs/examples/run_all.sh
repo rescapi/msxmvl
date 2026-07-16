@@ -98,9 +98,17 @@ run "$H/crypt_02_verify.c"    "crypt.c" a5 8
 EX_EXT=scc run "$H/scc_01_wave.c"   "bios.c scc.c" a5 8
 EX_EXT=scc EX_DEFS="-DSCC_SLOT_MODE=SCC_SLOT_AUTO" run "$H/scc_02_detect.c" "bios.c scc.c" a5 8
 
-# Sound (MSX-MUSIC) — OPLL is WRITE-ONLY, so assert the emulated chip's registers
-EX_EXT=fmpac EX_DBG="Panasoft SW-M004 FMPAC regs" EX_DBGOFS=0x30 EX_DBGLEN=1 EX_DBGWANT=50 \
-  run "$H/msxmusic_01_note.c" "bios.c system.c msx-music.c" a5 8
+# Sound (MSX-MUSIC) — OPLL is WRITE-ONLY, so assert the emulated chip's registers.
+# The FMPAC extension needs the FMPAC BIOS ROM, which is COPYRIGHTED — present on real hardware
+# and a configured local openMSX, but never on a bare C-BIOS CI runner (where it would hang on
+# the missing chip). CI runners set CI=true; skip it there. Set MSXMVL_SKIP_FMPAC=1 to skip
+# manually. Locally (ROM present) it runs and is asserted like the others.
+if [ -n "${CI:-}" ] || [ -n "${MSXMVL_SKIP_FMPAC:-}" ]; then
+  echo "  msxmusic_01_note.c: SKIP (FMPAC BIOS ROM is copyrighted; not available in CI — source verified locally)"
+else
+  EX_EXT=fmpac EX_DBG="Panasoft SW-M004 FMPAC regs" EX_DBGOFS=0x30 EX_DBGLEN=1 EX_DBGWANT=50 \
+    run "$H/msxmusic_01_note.c" "bios.c system.c msx-music.c" a5 8
+fi
 
 # Sound (MSX-AUDIO) — the Y8950 does read back, so it self-verifies
 EX_EXT=audio run "$H/msxaudio_01_reg.c" "msx-audio.c" a5 8
