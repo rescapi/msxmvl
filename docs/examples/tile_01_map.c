@@ -1,13 +1,23 @@
-// Tile draws a screen from a map of tile indices, copying each tile's bitmap from
-// a tileset in VRAM (command-engine VRAM->VRAM). Here we fill the tile bank with a
-// known pattern (0x99), fill the screen with background (0x11), then draw a 2x2 map
-// whose index 0 is the transparent TILE_SKIP_INDEX (left as background) and the
-// others are drawn. Verifying VRAM shows exactly which cells were painted.
+// level.c — draw a chunk of the level's tile map onto the screen.
+//
+// A level is a byte array of tile indices; g_Map[row*width + col] says which tile goes in
+// each cell. Tile_DrawMapChunk blits that rectangle of tiles from the tileset in VRAM to
+// the screen with the command engine (VRAM->VRAM). Index TILE_SKIP_INDEX (0) counts as
+// transparent and is left untouched, so you can overlay a chunk without erasing behind it.
 #include "vdp.h"
 #include "tile.h"
-volatile u8 __at(0xE000) R[8];
 
-static const u8 g_Map[4] = { 0, 2, 3, 4 };   // index 0 = skip (transparent)
+// A 2x2 corner of the level map. Tile 0 is transparent (skipped); 2,3,4 are drawn.
+static const u8 g_Map[4] = { 0, 2, 3, 4 };
+
+// Draw the 2x2 level chunk at screen cell (cx, cy).
+void draw_level_chunk(u8 cx, u8 cy)
+{
+	Tile_DrawMapChunk(cx, cy, g_Map, 2, 2);
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
+volatile u8 __at(0xE000) R[8];
 
 void main(void)
 {
@@ -19,7 +29,7 @@ void main(void)
 	VDP_CommandWait();
 	Tile_FillBank(0, 0x99);                // every tile's bitmap -> 0x99
 	VDP_CommandWait();
-	Tile_DrawMapChunk(0, 0, g_Map, 2, 2);  // draw the 2x2 map at cell (0,0)
+	draw_level_chunk(0, 0);                // draw the 2x2 map at cell (0,0)
 	VDP_CommandWait();
 
 	R[1] = VDP_Peek_16K(0);    // cell (0,0), tile 0 = SKIP -> background 0x11

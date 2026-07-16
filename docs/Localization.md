@@ -34,41 +34,33 @@ const c8*   Loc_GetText(u16 text);                     // 0 .. TEXT_MAX-1
 
 ## Switching language
 
-```c
-#include "localize.h"
-volatile u8 __at(0xE000) R[8];
+Put the whole UI text table in ROM, one row per language, and wrap the three calls in verbs the
+rest of the game can use. `ui_text_init` binds the table (and selects language 0); `ui_set_language`
+flips rows; `ui_text` fetches one string.
 
-#define TEXT_MAX  2         // entries per language
-#define TXT_YES   0
+```c
+// ui_text.c — the game's UI strings in every language, switched at runtime.
+#include "localize.h"
+
+#define TEXT_MAX  2         // strings per language
+#define TXT_YES   0         // name each string slot
 #define TXT_NO    1
 
-// One pointer row per language, laid out back to back: row L starts at
-// DataRoot + TEXT_MAX*2*L — exactly what Loc_SetLanguage computes.
-static const c8* g_Loc[2 * TEXT_MAX] =
+// One pointer row per language: English, then French, back to back.
+static const c8* g_Strings[2 * TEXT_MAX] =
 {
 	"YES", "NO",            // language 0 — English
 	"OUI", "NON",           // language 1 — French
 };
 
-void main(void)
-{
-	Loc_Initialize((const void*)g_Loc, TEXT_MAX);   // defaults to language 0
-
-	R[1] = (u8)Loc_GetText(TXT_YES)[0];    // 'Y' = 0x59
-	R[2] = (u8)Loc_GetText(TXT_NO)[0];     // 'N' = 0x4E
-
-	Loc_SetLanguage(1);                    // switch to French
-	R[3] = (u8)Loc_GetText(TXT_YES)[0];    // 'O' = 0x4F
-	R[4] = (u8)Loc_GetText(TXT_NO)[0];     // 'N' = 0x4E
-
-	R[0] = (R[1] == 'Y' && R[2] == 'N' && R[3] == 'O' && R[4] == 'N')
-	     ? 0xA5 : 0x00;
-	for (;;) {}
-}
+void ui_text_init(void)    { Loc_Initialize((const void*)g_Strings, TEXT_MAX); }
+void ui_set_language(u8 l)  { Loc_SetLanguage(l); }
+const c8* ui_text(u16 id)  { return Loc_GetText(id); }
 ```
 
-Runs to `R[] = a5 59 4e 4f 4e` — `'Y' 'N'` before the switch, `'O' 'N'` after. *(tested:
-`localize_01_lang.c`)*
+Straight after `ui_text_init()`, `ui_text(TXT_YES)` starts with `'Y'` and `ui_text(TXT_NO)` with
+`'N'`. Call `ui_set_language(1)` and the same two slots now read `'O'` (OUI) and `'N'` (NON) — the
+switch is a single pointer add. *(tested: `localize_01_lang.c`)*
 
 ## Using it
 

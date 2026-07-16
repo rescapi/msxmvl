@@ -22,28 +22,28 @@ the byte address is `y*128 + x/2`. The examples verify pixels by reading VRAM ba
 void Draw_Point(UX x, UY y, u8 color, u8 op);
 ```
 
-Plot a single pixel.
+Plot a single pixel. Plotting points one at a time is how you paint a radar or minimap —
+each contact is one colored blip, and because GRAPHIC4 packs two pixels per byte, two blips
+side by side share a VRAM byte:
 
 ```c
+// radar.c — plot enemy blips on a bitmap minimap (SCREEN 5 / GRAPHIC4).
 #include "vdp.h"
 #include "draw.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define BLIP_ENEMY  0x0A     // color of a hostile blip
+#define BLIP_ALLY   0x0B     // ...and a friendly one
+
+// Light one blip on the radar at pixel (x, y).
+void radar_blip(u8 x, u8 y, u8 color)
 {
-	VDP_SetMode(VDP_MODE_GRAPHIC4);
-
-	Draw_Point(4, 2, 0x0A, VDP_OP_IMP);    // even x -> high nibble = A
-	Draw_Point(5, 2, 0x0B, VDP_OP_IMP);    // odd x  -> low nibble  = B
-
-	R[1] = VDP_Peek_16K(2 * 128 + 2);      // byte at (x=4..5, y=2) = 0xAB
-	R[0] = (R[1] == 0xAB) ? 0xA5 : 0x00;
-	for (;;) {}
+	Draw_Point(x, y, color, VDP_OP_IMP);
 }
 ```
 
-Runs to `R[] = a5 ab` — two adjacent pixels packed into one byte as `0xAB`. *(tested:
-`draw_01_point.c`)*
+Blipping an enemy at even `x=4` and an ally at odd `x=5` on row 2 packs color `A` into the
+high nibble and `B` into the low nibble of the same byte — reading it back gives `0xAB`.
+*(tested: `draw_01_point.c`)*
 
 ---
 
@@ -66,27 +66,28 @@ The box functions take the **inclusive** top-left and bottom-right corners (so
 > finished. `draw`/`vdp` functions already wait for the *previous* command before starting a new
 > one, so back-to-back draws are safe — it's only CPU reads mid-flight that need the explicit wait.
 
+A **health bar** is a natural use of `Draw_FillBox`: a solid box whose width tracks how much
+health is left, redrawn whenever the player takes a hit.
+
 ```c
+// hud.c — draw the player's health bar with the VDP command engine (GRAPHIC4).
 #include "vdp.h"
 #include "draw.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define HP_COLOR   0x0F      // health-bar color (palette entry 15)
+#define HP_TOP     3         // the bar's top row...
+#define HP_BOTTOM  4         // ...and bottom row
+
+// Draw a health bar filling x = 0 .. width-1, two rows tall.
+void draw_health_bar(u8 width)
 {
-	VDP_SetMode(VDP_MODE_GRAPHIC4);
-
-	Draw_FillBox(0, 3, 7, 4, 0x0F, VDP_OP_IMP);   // solid 8x2 block, color 15
-	VDP_CommandWait();                     // let the command engine finish first
-
-	R[1] = VDP_Peek_16K(3 * 128 + 0);      // row 3, first byte  = 0xFF
-	R[2] = VDP_Peek_16K(4 * 128 + 3);      // row 4, x=6..7 byte = 0xFF
-	R[0] = (R[1] == 0xFF && R[2] == 0xFF) ? 0xA5 : 0x00;
-	for (;;) {}
+	Draw_FillBox(0, HP_TOP, width - 1, HP_BOTTOM, HP_COLOR, VDP_OP_IMP);
 }
 ```
 
-Runs to `R[] = a5 ff ff` — both sampled bytes are two color-15 pixels, confirming the fill covered
-the full 8×2 region. *(tested: `draw_02_shapes.c`)*
+A full bar of width 8 fills the inclusive block `(0,3)–(7,4)` in color 15; sampling any covered
+byte reads `0xFF` (two color-15 pixels), confirming the fill reached the whole 8×2 region.
+*(tested: `draw_02_shapes.c`)*
 
 ## See also
 

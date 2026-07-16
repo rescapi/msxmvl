@@ -21,28 +21,28 @@ u8   PSG_GetRegister(u8 reg);             // read any PSG register back
 ```
 
 `PSG_SetTone(chan, period)` writes the channel's two period registers (channel A → registers 0/1);
-`PSG_SetVolume(chan, vol)` writes its volume register (channel A → register 8). To actually hear
-it you also enable the channel in the mixer (`PSG_SetMixer` / `PSG_EnableTone`).
+`PSG_SetVolume(chan, vol)` writes its volume register (channel A → register 8). A one-shot sound
+effect — a coin pickup, a jump blip — is nothing more than that: a tone at a volume on a channel
+you keep free for effects.
 
 ```c
+// sfx.c — one-shot sound effects on the PSG (a coin pickup, a jump blip).
 #include "psg.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+#define SFX_CHANNEL   0        // channel A, kept free for sound effects
+
+// Start a sound effect: a tone at a given pitch and volume on the effects channel.
+void sfx_play(u16 period, u8 volume)
 {
-	PSG_SetTone(0, 0x123);         // channel A period 0x123 -> reg0=0x23, reg1=0x01
-	PSG_SetVolume(0, 12);          // channel A volume -> reg8 = 12
-
-	R[1] = PSG_GetRegister(0);     // 0x23 (fine period)
-	R[2] = PSG_GetRegister(1);     // 0x01 (coarse period)
-	R[3] = PSG_GetRegister(8);     // 12   (volume)
-	R[0] = (R[1] == 0x23 && R[2] == 0x01 && R[3] == 12) ? 0xA5 : 0x00;
-	for (;;) {}
+	PSG_SetTone(SFX_CHANNEL, period);
+	PSG_SetVolume(SFX_CHANNEL, volume);
 }
 ```
 
-Runs to `R[] = a5 23 01 0c` — the tone period and volume read back exactly as written.
-*(tested: `psg_01_tone.c`)*
+`sfx_play(0x123, 12)` writes period `0x123` (fine `0x23`, coarse `0x01`) and volume `12`; reading
+registers 0, 1 and 8 back gives `R[] = a5 23 01 0c` — exactly what was written. To actually *hear*
+it you also enable the channel in the mixer (`PSG_SetMixer` / `PSG_EnableTone`). *(tested:
+`psg_01_tone.c`)*
 
 ### Making an audible note
 

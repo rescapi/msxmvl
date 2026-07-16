@@ -32,10 +32,6 @@ call *within* the same bank is a normal, free near-call.
 It looks like ordinary C. A function in one bank can call a function in another with a `far_`
 prefix; the tool wires up the rest.
 
-> In the `main.c` below, `volatile u8 __at(0xE000) R[8];` and the `R[0] = ...` line are just test
-> scaffolding (the harness reads `R[]` back to confirm the run); your real `main` is your game loop.
-> ([full explanation](Getting-Started.md))
-
 **A "gameplay" bank that calls a "scoring" bank:**
 
 ```c
@@ -66,12 +62,12 @@ u16 level_score(u16 level)
 // main.c  (resident, always mapped)
 #include "types.h"
 #include "far.h"
-volatile u8 __at(0xE000) R[8];
 
 void main(void)
 {
-	u16 score = far_play_level(3);         // resident -> gameplay bank -> scoring bank
-	R[0] = (score == 350) ? 0xA5 : 0x00;   // play_level(3) = (3*100) + 50 = 350
+	u16 score = far_play_level(3);   // resident -> gameplay bank -> scoring bank, automatic
+	// score == 350:  play_level(3) = level_score(3) + 50 = (3 * 100) + 50
+	...
 }
 ```
 

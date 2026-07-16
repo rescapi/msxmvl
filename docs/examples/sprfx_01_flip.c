@@ -1,9 +1,24 @@
-// Sprite FX transform 8x8 (or 16x16) sprite patterns in RAM — no VDP involved.
-// An 8x8 pattern is 8 bytes, one per row (each bit = one pixel).
-//   FlipHorizontal8: mirror left<->right  (bit-reverse every row byte)
-//   FlipVertical8:   mirror top<->bottom  (reverse the row order)
-// Precompute both facings of a sprite once, then just upload the one you need.
+// hero_sprite.c — make the hero face left or right from a single sprite pattern.
+//
+// The V9938 can't mirror a sprite for you, so you precompute both facings in RAM once and
+// upload whichever way the hero is walking — no second hand-drawn frame to turn around.
+// An 8x8 pattern is 8 bytes, one per row (each bit a pixel). FlipHorizontal8 bit-reverses
+// every row (left<->right); FlipVertical8 reverses the row order (top<->bottom).
 #include "sprite_fx.h"
+
+// Build the left-facing pattern from the right-facing one.
+void face_left(const u8* facing_right, u8* facing_left)
+{
+	SpriteFX_FlipHorizontal8(facing_right, facing_left);
+}
+
+// Build an upside-down pattern (e.g. a defeated enemy tumbling off the top).
+void flip_upside_down(const u8* upright, u8* tumbling)
+{
+	SpriteFX_FlipVertical8(upright, tumbling);
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
 volatile u8 __at(0xE000) R[8];
 
 static const u8 pat[8] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
@@ -11,8 +26,8 @@ static const u8 pat[8] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80 };
 void main(void)
 {
 	u8 h[8], v[8];
-	SpriteFX_FlipHorizontal8(pat, h);      // each row bit-reversed
-	SpriteFX_FlipVertical8(pat, v);        // rows reversed
+	face_left(pat, h);                     // each row bit-reversed
+	flip_upside_down(pat, v);              // rows reversed
 
 	R[1] = h[0];                           // flip(0x01) = 0x80
 	R[2] = h[7];                           // flip(0x80) = 0x01

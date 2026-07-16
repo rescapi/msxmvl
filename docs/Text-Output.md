@@ -17,18 +17,19 @@ VRAM fonts, and even sprite-rendered text. You pick the font *kind* with the mat
 | `Print_SetVRAMFont` | a font pre-loaded in VRAM |
 | `Print_SetSpriteFont` | hardware sprites |
 
-## Setup and drawing (tested)
+## A HUD text layer (tested)
 
-Provide a font, choose the render path with the matching setter, set colors and cursor, then draw.
-This minimal font holds three 8×8 glyphs (`'!'`..`'#'`); drawing `'!'` and reading the bitmap back
-proves the glyph pixels landed in the text color.
+A game HUD sets up its font and colors once, then just moves the cursor and stamps characters —
+the score, the lives counter, a message. Here a minimal font of three 8×8 glyphs (`'!'`..`'#'`)
+stands in for a real HUD font; drawing `'!'` and reading the bitmap back proves the glyph pixels
+landed in the text color.
 
 ```c
+// hud_text.c — draw HUD text with a bitmap font you supply.
 #include "vdp.h"
 #include "print.h"
-volatile u8 __at(0xE000) R[8];
 
-// header: {w<<4|h nibbles, size, firstChar, lastChar}, then 8 bytes per glyph
+// A tiny 3-glyph font ('!'..'#'): header {w<<4|h, size, first, last}, then 8 rows/glyph.
 static const u8 g_Font[] = {
 	0x88, 0x11, 33, 35,
 	0x18,0x18,0x18,0x18,0x00,0x18,0x18,0x00,   // '!'  (rows: 0x18 = pixels x3,x4)
@@ -36,27 +37,24 @@ static const u8 g_Font[] = {
 	0x24,0x7E,0x24,0x24,0x7E,0x24,0x00,0x00,   // '#'
 };
 
-void main(void)
+// Set up the HUD font and colors once at startup.
+void hud_init(void)
 {
-	VDP_SetMode(VDP_MODE_GRAPHIC4);
 	Print_SetBitmapFont(g_Font);
 	Print_SetColor(0x0A, 0x01);        // text color 0x0A, background 0x01
-	Print_SetPosition(0, 0);
-	Print_DrawChar('!');
-	VDP_CommandWait();                 // let the glyph finish drawing
+}
 
-	// '!' row 0 is 0x18 -> pixels x3,x4 are text-color(A), rest background(1).
-	// GRAPHIC4 packs two pixels/byte: byte1 = x2,x3 = 0x1A; byte2 = x4,x5 = 0xA1.
-	R[1] = VDP_Peek_16K(0);            // x0,x1 = bg,bg      = 0x11
-	R[2] = VDP_Peek_16K(1);            // x2,x3 = bg,text    = 0x1A
-	R[3] = VDP_Peek_16K(2);            // x4,x5 = text,bg    = 0xA1
-	R[0] = (R[1]==0x11 && R[2]==0x1A && R[3]==0xA1) ? 0xA5 : 0x00;
-	for (;;) {}
+// Draw one HUD character at column/row (col, row).
+void hud_char(u8 col, u8 row, u8 chr)
+{
+	Print_SetPosition(col, row);
+	Print_DrawChar(chr);
 }
 ```
 
-Runs to `R[] = a5 11 1a a1` — the `'!'` glyph's top row landed exactly where the font defines it.
-*(tested: `print_01_text.c`)*
+Drawing `'!'` at the top-left corner writes its top row (`0x18`, pixels x3/x4) into the bitmap:
+GRAPHIC4 packs two pixels per byte, so those pixels read back as `0x1A` and `0xA1` (text color
+`A` against background `1`) exactly where the font defines them. *(tested: `print_01_text.c`)*
 
 Everyday drawing is higher-level — `Print_DrawText("SCORE ")`, `Print_DrawInt(1234)`,
 `Print_DrawChar('!')` — with the cursor advancing after each.

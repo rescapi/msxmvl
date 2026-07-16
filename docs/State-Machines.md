@@ -38,46 +38,41 @@ bool       FSM_IsPending(void);              // is a transition queued?
 FSM_State* FSM_GetPending(void);             // the queued state
 ```
 
-## A title → game transition
+## A hero: idle → jump
+
+The player's own behaviour is a natural state machine. Here the hero stands idle (an animation
+ticking over every frame), then jumps: entering the jump runs its `Begin`, leaving idle runs its
+`End`. Each state is a struct of callbacks; a few thin wrappers give the rest of the game a verb
+per action.
 
 ```c
+// hero_fsm.c — the player's own state machine: stand idle, then jump.
 #include "fsm.h"
-volatile u8 __at(0xE000) R[8];
 
-static u8 g_TitleTicks, g_GameEnters, g_TitleLeft;
+static u8 g_IdleFrames;    // idle animation cursor: frames spent standing
+static u8 g_JumpsStarted;  // how many times the hero launched a jump
+static u8 g_IdleExits;     // how many times the hero left the idle state
 
-static void Title_Update(void) { g_TitleTicks++; }
-static void Title_End(void)    { g_TitleLeft++; }
-static void Game_Begin(void)   { g_GameEnters++; }
-static void Game_Update(void)  { }
+static void idle_update(void) { g_IdleFrames++; }    // advance the idle animation
+static void idle_leave(void)  { g_IdleExits++; }     // clean up as we leave idle
+static void jump_launch(void) { g_JumpsStarted++; }  // kick off the jump arc
+static void jump_update(void) { }                    // airborne this frame
 
-//                       Flag  Begin       Update        End
-static FSM_State g_Title = { 0, NULL,       Title_Update, Title_End };
-static FSM_State g_Game  = { 0, Game_Begin, Game_Update,  NULL      };
+//                         Flag  Begin        Update       End
+static FSM_State g_Idle = {  0,  NULL,        idle_update, idle_leave };
+static FSM_State g_Jump = {  0,  jump_launch, jump_update, NULL       };
 
-void main(void)
-{
-	FSM_SetState(&g_Title);   // queued, not applied yet
-	R[1] = FSM_IsPending() ? 1 : 0;             // 1
-
-	FSM_Update();             // applies Title, then ticks it
-	FSM_Update();
-	R[2] = g_TitleTicks;                        // 2
-
-	FSM_SetState(&g_Game);    // queue the transition
-	FSM_Update();             // Title.End, Game.Begin, Game.Update
-	R[3] = g_TitleLeft;                         // 1
-	R[4] = g_GameEnters;                        // 1
-	R[5] = (FSM_GetState() == &g_Game) ? 1 : 0; // 1
-
-	R[0] = (R[1] == 1 && R[2] == 2 && R[3] == 1 && R[4] == 1 && R[5] == 1)
-	     ? 0xA5 : 0x00;
-	for (;;) {}
-}
+void hero_init(void)       { FSM_SetState(&g_Idle); }
+void hero_jump(void)       { FSM_SetState(&g_Jump); }
+void hero_tick(void)       { FSM_Update(); }
+bool hero_is_jumping(void) { return FSM_GetState() == &g_Jump; }
 ```
 
-Runs to `R[] = a5 01 02 01 01 01`. Note `Begin`/`End` are `NULL` where the state has no
-enter/leave work — the module guards against that. *(tested: `fsm_01_states.c`)*
+`hero_init()` queues the idle state; the first `hero_tick()` applies it and then ticks it, so two
+ticks leave `g_IdleFrames == 2`. `hero_jump()` queues the jump, and the next `hero_tick()` runs
+`idle_leave`, then `jump_launch`, then `jump_update` — after which `hero_is_jumping()` is true.
+Note `Begin`/`End` are `NULL` where a state has no enter/leave work; the module guards against that.
+*(tested: `fsm_01_states.c`)*
 
 ## The usual game loop
 

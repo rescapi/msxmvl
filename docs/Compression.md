@@ -40,43 +40,37 @@ Set `COMPRESS_USE_RLEP_FIXSIZE` to `1` before including the header to get a
 `RLEp_UnpackToRAM(src, dst, size)` variant that stops after `size` bytes instead of at the
 terminator.
 
-## Unpacking a stream
+## Unpacking a level's tilemap
 
-This stream exercises all four chunk types. Keep the packed data `const` so it stays in ROM.
+A level's tilemap ships packed in ROM and is expanded into a RAM buffer when the level loads.
+`load_tilemap` is one call that returns how many tiles it produced. Keep the packed data `const` so
+it stays in ROM — this little stream exercises all four chunk types.
 
 ```c
+// level_load.c — unpack a compressed tilemap into RAM when a level loads.
 #include "compress.h"
-volatile u8 __at(0xE000) R[8];
 
-// RLEp stream: [default] then chunks, terminated by 0x00.
-static const u8 g_Packed[] = {
-	0xAA,                    // default value for Type-0 runs
+// A tiny packed tilemap: [default tile] then chunks, terminated by 0x00.
+static const u8 g_PackedMap[] = {
+	0xAA,                    // default tile for Type-0 runs
 	0x02,                    // T0 x3  -> AA AA AA
 	0x43, 0xBB,              // T1 x4  -> BB BB BB BB
 	0x81, 0xCC, 0xDD,        // T2 x2  -> CC DD CC DD
 	0xC2, 0x11, 0x22, 0x33,  // T3 x3  -> 11 22 33 (raw)
 	0x00,                    // terminator
 };
-static u8 g_Out[16];
+static u8 g_TileMap[16];     // where the level's tiles land in RAM
 
-void main(void)
+// Unpack the level's tilemap into RAM; returns the tile count.
+u16 load_tilemap(void)
 {
-	u16 len = RLEp_UnpackToRAM(g_Packed, g_Out);
-
-	R[1] = (u8)len;      // 14 unpacked bytes
-	R[2] = g_Out[0];     // 0xAA  (default run)
-	R[3] = g_Out[3];     // 0xBB  (1-byte run)
-	R[4] = g_Out[7];     // 0xCC  (2-byte run)
-	R[5] = g_Out[11];    // 0x11  (raw copy)
-
-	R[0] = (len == 14 && g_Out[0] == 0xAA && g_Out[3] == 0xBB
-	     && g_Out[7] == 0xCC && g_Out[11] == 0x11) ? 0xA5 : 0x00;
-	for (;;) {}
+	return RLEp_UnpackToRAM(g_PackedMap, g_TileMap);
 }
 ```
 
-Runs to `R[] = a5 0e aa bb cc 11` — 12 packed bytes became `0x0e` = 14. *(tested:
-`compress_01_rlep.c`)*
+`load_tilemap()` returns `14`: the 12 packed bytes expand to `AA AA AA BB BB BB BB CC DD CC DD 11 22
+33`. The default-run tile is `0xAA`, the 1-byte run gives `0xBB`, the pair run `0xCC`, and the raw
+chunk copies `0x11 0x22 0x33` through untouched. *(tested: `compress_01_rlep.c`)*
 
 ## Notes
 

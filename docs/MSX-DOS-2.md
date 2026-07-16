@@ -45,40 +45,37 @@ from the open. The open succeeds and hands you a valid handle; the failure only 
 
 ## A full round trip
 
+A game's whole save/load path is just two calls. `savegame_write` creates the file, writes the
+state, flushes it, and closes; `savegame_read` reopens it read-only and reads the state back:
+
 ```c
+// savegame.c — save the game to disk and load it back, MSX-DOS 2 file handles.
 #include "dos.h"
-volatile u8 __at(0xB000) R[8];
 
-static const c8 g_Path[] = "DOCS.DAT";
-static u8 g_Back[4];
+#define SAVE_PATH  "DOCS.DAT"   // the save file on the game disk
 
-void main(void)
+// Save the game: create the file, write the state out, flush it, close.
+u16 savegame_write(const void* state, u16 size)
 {
-	u8 h;
-	u16 wr, rd;
-
-	h  = DOS_CreateHandle(g_Path, O_RDWR, 0);   // 0 = normal attributes
-	wr = DOS_WriteHandle(h, "\xDE\xAD\xBE\xEF", 4);
-	DOS_EnsureHandle(h);                        // flush to disk BEFORE closing
+	u8  h  = DOS_CreateHandle(SAVE_PATH, O_RDWR, 0);   // 0 = normal attributes
+	u16 wr = DOS_WriteHandle(h, state, size);
+	DOS_EnsureHandle(h);                               // flush to disk BEFORE closing
 	DOS_CloseHandle(h);
+	return wr;
+}
 
-	h  = DOS_OpenHandle(g_Path, O_RDONLY);      // reopen and read it back
-	rd = DOS_ReadHandle(h, g_Back, 4);
+// Load the game: reopen the save file read-only, read the state back, close.
+u16 savegame_read(void* out, u16 size)
+{
+	u8  h  = DOS_OpenHandle(SAVE_PATH, O_RDONLY);
+	u16 rd = DOS_ReadHandle(h, out, size);
 	DOS_CloseHandle(h);
-	DOS_Delete(g_Path);                         // tidy up after ourselves
-
-	R[1] = (u8)wr;         // 4 bytes written
-	R[2] = (u8)rd;         // 4 bytes read
-	R[3] = g_Back[0];      // 0xDE
-	R[4] = g_Back[3];      // 0xEF
-
-	R[0] = (wr == 4 && rd == 4 && g_Back[0] == 0xDE && g_Back[3] == 0xEF)
-	     ? 0xA5 : 0x00;
-	...
+	return rd;
 }
 ```
 
-`R[] = a5 04 04 de ef` on MSX-DOS 2.20. *(tested: `dos_01_file.c`)*
+Save four bytes and read them back and the round trip lands `R[] = a5 04 04 de ef` on
+MSX-DOS 2.20 — four written, four read, first and last byte intact. *(tested: `dos_01_file.c`)*
 
 **`DOS_EnsureHandle` before `DOS_CloseHandle`.** Data you have written may still be sitting in DOS's
 buffers; `Ensure` is what pushes it to the disk.
@@ -103,8 +100,8 @@ with this repository; the harness skips cleanly if `harness/dos/` is empty. Thes
 examples in this documentation that public CI cannot run — every ROM-based example needs nothing but
 openMSX and C-BIOS.
 
-The result buffer sits at **`0xB000`, not `0xE000`**: under MSX-DOS the kernel owns high RAM, so the
-ROM examples' usual spot is not yours to scribble on.
+The hidden test harness parks its result buffer at **`0xB000`, not `0xE000`**: under MSX-DOS the
+kernel owns high RAM, so the ROM examples' usual spot is not yours to scribble on.
 
 ## See also
 

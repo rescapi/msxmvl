@@ -26,25 +26,24 @@ with a branchless signed-offset square table (`(a+b)²/4 − (a−b)²/4`), so i
 SDCC's general `__mulint` for 8-bit operands. This is the workhorse of any fixed-point rotate
 or scale.
 
-**Example — scale a value by a Q1.7 factor.** Scale `x = 100` by `cos(45°)` (`≈ 0.707`):
+**Example — scale a model vertex by a Q1.7 factor.** Foreshorten a coordinate by `cos(angle)` —
+e.g. `cos(45°)` (`≈ 0.707`), which is angle `32` of 256, so `G3D_Cos(32) = 90` in Q1.7:
 
 ```c
+// vertex.c — scale a model vertex by a Q1.7 factor using the fast 8x8 multiply.
 #include "g3d.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define ANGLE_45  32     // 45 degrees, as 1/8 of the 256-step turn
+
+// Scale one coordinate by cos(angle) -- e.g. foreshortening a vertex as it turns.
+i8 scale_by_cos(i8 coord, u8 angle)
 {
-	i8  x = 100;
-	i16 p = G3D_MulS8(x, G3D_Cos(32));   // = 100 * 90 = 9000
-	i8  scaled = (i8)(p >> 7);           // Q1.7 -> integer: 9000>>7 = 70
-
-	R[1] = (u8)scaled;                   // 70 (0x46)
-	R[0] = (scaled == 70) ? 0xA5 : 0x00;
-	for (;;) {}
+	i16 p = G3D_MulS8(coord, G3D_Cos(angle));   // Q1.7 product, kept 16-bit
+	return (i8)(p >> 7);                         // Q1.7 -> integer units
 }
 ```
 
-Runs to `R[] = a5 46` — `100 × 0.707 ≈ 70`. *(tested: `g3d_01_mul.c`)*
+`scale_by_cos(100, ANGLE_45)` returns `70` — `100 × 0.707 ≈ 70`. *(tested: `g3d_01_mul.c`)*
 
 > **Tip:** always keep the intermediate as `i16` before the `>> 7`. Shifting an `i8` product
 > would overflow — the whole point of the 16-bit return is to hold the full result.
@@ -62,28 +61,28 @@ Table lookups (`round(127·sin(2π·i/256))`), no computation. Because `angle` i
 it wraps at 256 automatically — you never range-reduce. `G3D_Cos` is just `G3D_Sin` a quarter
 turn ahead.
 
-**Example — rotate a 2D point by 90°.** Rotate `(64, 0)` by angle 64 (a quarter of 256):
+**Example — rotate a 2D point by 90°.** Spin a point about the origin — the same maths a
+wireframe object runs on each vertex, once per frame:
 
 ```c
+// rotate.c — spin a 2D point around the origin with Q1.7 sin/cos.
 #include "g3d.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define ANGLE_90  64     // 90 degrees, as a quarter of the 256-step turn
+
+// Rotate point (x,y) about the origin by `angle`; writes the result back in place.
+void rotate_point(i8* x, i8* y, u8 angle)
 {
-	i8 x = 64, y = 0;
-	i8 s = G3D_Sin(64);          // sin(90 deg) = 127
-	i8 c = G3D_Cos(64);          // cos(90 deg) = 0
-	i8 nx = (i8)((G3D_MulS8(x, c) - G3D_MulS8(y, s)) >> 7);   // 0
-	i8 ny = (i8)((G3D_MulS8(x, s) + G3D_MulS8(y, c)) >> 7);   // 63 (rounding)
-
-	R[1] = (u8)nx;               // 0
-	R[2] = (u8)ny;               // 63
-	R[0] = (nx == 0 && ny == 63) ? 0xA5 : 0x00;
-	for (;;) {}
+	i8 s = G3D_Sin(angle);
+	i8 c = G3D_Cos(angle);
+	i8 nx = (i8)((G3D_MulS8(*x, c) - G3D_MulS8(*y, s)) >> 7);
+	i8 ny = (i8)((G3D_MulS8(*x, s) + G3D_MulS8(*y, c)) >> 7);
+	*x = nx;
+	*y = ny;
 }
 ```
 
-Runs to `R[] = a5 00 3f` — `(64,0)` rotates to `(0, 63)`. The `63` (not `64`) is the honest
+`rotate_point(&x, &y, ANGLE_90)` turns `(64, 0)` into `(0, 63)`. The `63` (not `64`) is the honest
 cost of Q1.7 rounding: `64 × 127 >> 7 = 63`. *(tested: `g3d_02_rotate.c`)*
 
 > **Why 256 steps?** A byte angle wraps naturally, and 256 entries keep the table small

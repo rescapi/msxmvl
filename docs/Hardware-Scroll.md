@@ -29,32 +29,37 @@ Horizontal scrolling **wraps** (the map is treated as a cylinder); vertical scro
 the non-visible margin `[0, (SCROLL_SRC_H − SCROLL_DST_H) × 8]`. The map dimensions come from the
 `SCROLL_SRC_W/H` and `SCROLL_DST_W/H` build-time defines.
 
-## Offset bookkeeping (tested)
+## A camera that follows the player (tested)
 
-Motion is expressed in pixels that accumulate in `g_Scroll_OffsetX` / `g_Scroll_OffsetY`. This
-example verifies the accumulation and the vertical clamp (with the default config, the vertical
-margin is `(24 − 20) × 8 = 32` pixels). `Scroll_Update` — which programs the VDP and redraws exposed
-tiles — needs the full map, so it's shown in the per-frame snippet below rather than tested inline.
+Think of the scroll offset as a **camera** that the player pushes around the level. Each frame you
+add a few pixels of motion; the totals accumulate in `g_Scroll_OffsetX` / `g_Scroll_OffsetY`.
+Horizontal motion wraps (the level can loop); vertical motion **clamps** at the top and bottom
+edge, so the camera can't reveal past the map. With the default config the vertical margin is
+`(24 − 20) × 8 = 32` pixels.
 
 ```c
+// camera.c — accumulate a scroll offset as the player walks the level.
 #include "scroll.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+// Walk the camera horizontally by dx pixels this frame (negative = left).
+void camera_walk_h(i8 dx)
 {
-	Scroll_SetOffsetH(100);
-	Scroll_SetOffsetH(-40);                 // accumulates: 100 - 40 = 60
-	R[1] = (u8)(g_Scroll_OffsetX & 0xFF);   // 60
+	Scroll_SetOffsetH(dx);
+}
 
-	Scroll_SetOffsetV(100);                 // clamps to (24-20)*8 = 32
-	R[2] = (u8)(g_Scroll_OffsetY & 0xFF);   // 32
-
-	R[0] = (R[1] == 60 && R[2] == 32) ? 0xA5 : 0x00;
-	for (;;) {}
+// Walk the camera vertically by dy pixels, clamped at the level's top/bottom edge.
+void camera_walk_v(i8 dy)
+{
+	Scroll_SetOffsetV(dy);
 }
 ```
 
-Runs to `R[] = a5 3c 20` (`0x3c=60`, `0x20=32`). *(tested: `scroll_01_offset.c`)*
+Walking `+100` then `−40` horizontally leaves the camera at `60` (the steps just add up); walking
+`+100` vertically saturates at the `32`-pixel margin instead of overshooting the edge. *(tested:
+`scroll_01_offset.c`)*
+
+`Scroll_Update` — which programs the VDP and redraws exposed tiles — needs the full map, so it's
+shown in the per-frame snippet below rather than tested inline.
 
 ## Per-frame usage
 

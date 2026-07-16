@@ -1,30 +1,35 @@
-// FAR POINTERS — reach one byte of data that lives beyond the Z80's 64 KB.
+// hiscore.c — a per-player high-score table that lives out in mapper RAM.
 //
-// A "far pointer" is a handle to a byte somewhere in the big mapper RAM, written
-// FAR(segment, offset). Far_Poke writes one byte through it; Far_Peek reads one back.
-// You never touch the mapper hardware or the 0x8000 window yourself — the library maps
-// the right segment in, does the access, and maps your old one back.
-//
-// Here: two players' high scores, kept in two different segments. Because the segments
-// are separate physical memory, player 1's score can never clobber player 2's — no
-// bookkeeping, no overlap.
+// Far_Poke writes one byte to a spot in the big mapper memory, addressed by (bank, offset);
+// Far_Peek reads one back. The library maps the bank in, does the access, and maps your own
+// memory back — so it feels like ordinary memory that just happens to be huge. Give each
+// player their own 16 KB bank and their scores can never tread on each other.
 #include "farmem.h"
+
+#define BANK_P1  17     // player 1's save data has its own 16 KB bank
+#define BANK_P2  18     // ...and player 2's
+
+// Store a player's high score.
+void hiscore_save(u8 player_bank, u8 score)
+{
+	Far_Poke(FAR(player_bank, 0), score);
+}
+
+// Read a player's high score back.
+u8 hiscore_load(u8 player_bank)
+{
+	return Far_Peek(FAR(player_bank, 0));
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
 volatile u8 __at(0xE000) R[4];
-
-#define SEG_PLAYER1  17     // segment holding player 1's save data
-#define SEG_PLAYER2  18     // ...and player 2's
-#define OFF_HISCORE  0      // where in the segment the high score lives
-
 void main(void)
 {
-	MemSeg_Init(16);                                    // bring up the mapper (home = 16)
-
-	Far_Poke(FAR(SEG_PLAYER1, OFF_HISCORE), 95);        // player 1 scored 95
-	Far_Poke(FAR(SEG_PLAYER2, OFF_HISCORE), 72);        // player 2 scored 72
-
-	R[1] = Far_Peek(FAR(SEG_PLAYER1, OFF_HISCORE));     // read them back -> 95
-	R[2] = Far_Peek(FAR(SEG_PLAYER2, OFF_HISCORE));     // -> 72
-
-	R[0] = (R[1] == 95 && R[2] == 72) ? 0xA5 : 0x00;    // both intact, side by side
+	MemSeg_Init(16);                    // once at startup: bring up the mapper (home = 16)
+	hiscore_save(BANK_P1, 95);          // player 1 scored 95
+	hiscore_save(BANK_P2, 72);          // player 2 scored 72
+	R[1] = hiscore_load(BANK_P1);       // -> 95
+	R[2] = hiscore_load(BANK_P2);       // -> 72
+	R[0] = (R[1] == 95 && R[2] == 72) ? 0xA5 : 0x00;
 	for (;;) {}
 }
