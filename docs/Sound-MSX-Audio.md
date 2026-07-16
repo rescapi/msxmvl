@@ -40,33 +40,26 @@ void MSXAudio_Mute(void);
 void MSXAudio_Resume(void);
 ```
 
-## Detecting and programming it
+## Building a voice
+
+With no canned instruments, a voice is built by writing the operator registers directly. This one
+programs operator 0 of the first channel — its tone shape and its level:
 
 ```c
+// fmvoice.c — build a custom FM voice on the MSX-AUDIO (Y8950).
 #include "msx-audio.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+// Program operator 0 of the first channel: its tone shape and its level.
+void fmvoice_program_op0(void)
 {
-	bool found;
-
-	MSXAudio_Initialize();
-	found = MSXAudio_Detect();
-
 	MSXAudio_SetRegister(0x20, 0x21);    // op0: multiple + tremolo/vibrato flags
 	MSXAudio_SetRegister(0x40, 0x1B);    // op0: key-scale level + total level
-
-	R[1] = found ? 1 : 0;
-	R[2] = MSXAudio_GetRegister(0x20);   // unlike the OPLL, the Y8950 reads back
-	R[3] = MSXAudio_GetRegister(0x40);
-
-	R[0] = (found && R[2] == 0x21 && R[3] == 0x1B) ? 0xA5 : 0x00;
-	for (;;) {}
 }
 ```
 
-Runs to `R[] = a5 01 21 1b` — and the emulated Y8950's own register `0x20` also holds `0x21`, so
-both the write *and* the read-back are real. *(tested: `msxaudio_01_reg.c`)*
+After `MSXAudio_Initialize()` / `MSXAudio_Detect()` at boot, `fmvoice_program_op0()` runs to
+`R[] = a5 01 21 1b` — and the emulated Y8950's own register `0x20` also holds `0x21`, so both the
+write *and* the read-back are real. *(tested: `msxaudio_01_reg.c`)*
 
 ## ADPCM: real sample playback
 
@@ -96,46 +89,36 @@ void MSXAudio_ADPCM_Stop(void);
 `delta` is the **replay rate** (DELTA-N): higher plays faster and higher-pitched. `volume` is
 `0`-`255` — and unlike the FM registers, here bigger *is* louder.
 
-### Uploading and playing a sample
+### Uploading and hitting a drum
+
+Upload the sample into the cartridge's RAM once, then trigger it whenever the drum should hit:
 
 ```c
+// drums.c — upload a drum sample to the MSX-AUDIO and hit it.
 #include "msx-audio.h"
-volatile u8 __at(0xE000) R[8];
 
-static const u8 g_Sample[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
-static u8 g_Back[8];
+#define SNARE_ADDR   0x1000       // where the snare sample lives in sample RAM
 
-#define SAMPLE_ADDR  0x1000       // byte address in the cartridge's sample RAM
+// A tiny snare sample (bytes of packed 4-bit ADPCM nibbles).
+static const u8 g_Snare[8] = { 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88 };
 
-void main(void)
+// Upload the snare into the cartridge's sample RAM at startup.
+void drum_upload_snare(void)
 {
-	bool found;
-	u8 i, ok = 1;
-
-	MSXAudio_Initialize();
-	found = MSXAudio_Detect();
-
 	MSXAudio_ADPCM_SetRamMode(MSXAUDIO_ADPCM_RAM_256K);   // the common 256 KB board
-	MSXAudio_ADPCM_WriteMemory(SAMPLE_ADDR, g_Sample, 8);
-	MSXAudio_ADPCM_ReadMemory(SAMPLE_ADDR, g_Back, 8);
+	MSXAudio_ADPCM_WriteMemory(SNARE_ADDR, g_Snare, 8);
+}
 
-	for (i = 0; i < 8; i++)
-		if (g_Back[i] != g_Sample[i])
-			ok = 0;
-
-	MSXAudio_ADPCM_Play(SAMPLE_ADDR, SAMPLE_ADDR + 7, 0x0400, 200);
-
-	R[1] = found ? 1 : 0;
-	R[2] = g_Back[0];     // 0x11 - straight out of the cartridge's RAM
-	R[3] = g_Back[7];     // 0x88
-
-	R[0] = (found && ok) ? 0xA5 : 0x00;
-	for (;;) {}
+// Hit the snare: play the uploaded sample once.
+void drum_hit_snare(void)
+{
+	MSXAudio_ADPCM_Play(SNARE_ADDR, SNARE_ADDR + 7, 0x0400, 200);
 }
 ```
 
-Runs to `R[] = a5 01 11 88`, and the cartridge's **actual sample RAM** at `0x1000` holds
-`11 22 33 44 55 66 77 88` - read back out of the emulated chip, not out of our own buffer. The same
+Reading the sample straight back out of the chip confirms the upload: the run passes to
+`R[] = a5 01 11 88`, and the cartridge's **actual sample RAM** at `0x1000` holds
+`11 22 33 44 55 66 77 88` — read back out of the emulated chip, not out of our own buffer. The same
 example passes with `MSXAUDIO_ADPCM_RAM_64K`. *(tested: `msxaudio_02_adpcm.c`, both RAM sizes)*
 
 > **Reads are pipelined.** After putting the chip in memory-read mode, the first two bytes you read

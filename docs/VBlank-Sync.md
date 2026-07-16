@@ -21,33 +21,22 @@ Two details make it safe to drop into any code:
 2. **Clears stale flags first.** It reads the status register once before polling, so it always
    waits for a *fresh* vblank rather than returning instantly on an already-pending one.
 
-**Example — confirm it returns and preserves the interrupt state.**
+**Example — one call per frame to pace the game loop.**
 
 ```c
+// gameloop.c — pace the game to the display's refresh, tear-free.
 #include "vsync.h"
-volatile u8 __at(0xE000) R[2];
 
-void main(void)
+// Wait for the start of the next frame's vertical blank.
+void wait_for_frame(void)
 {
-	__asm ei __endasm;
-	VDP_WaitVBlank();              // waits one field, then returns (no hang)
-
-	__asm
-		ld   a, i                 ; P/V = IFF2 (interrupt-enable state)
-		jp   pe, 1$               ; P/V=1 -> interrupts still enabled
-		xor  a
-		jr   2$
-	1$:
-		ld   a, #0xA5
-	2$:
-		ld   (_R + 0), a          ; R[0] = 0xA5 iff interrupts preserved
-	__endasm;
-	for (;;) {}
+	VDP_WaitVBlank();
 }
 ```
 
-Runs to `R[] = a5` — the call returned (no hang) and interrupts are still enabled.
-*(tested: `vsync_01_wait.c`)*
+`wait_for_frame()` blocks until the next vblank and returns without hanging, leaving the
+caller's interrupts exactly as it found them — so a loop that runs music under interrupts can
+call it every frame and stay enabled. *(tested: `vsync_01_wait.c`)*
 
 > **Why not use the interrupt instead?** You can, but a busy `WaitVBlank` is simpler for a
 > straight-line frame loop and needs no ISR setup. For background music or timers, enable the

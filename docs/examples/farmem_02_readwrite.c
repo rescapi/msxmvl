@@ -1,28 +1,34 @@
-// FAR POINTERS — copy a whole block to/from mapper RAM in one go.
+// savegame.c — save and load the hero's name.
 //
-// Poking one byte at a time is fine for a score, but for a chunk of data — a save
-// slot, a sprite pattern, a line of text — use Far_Write to send a block out and
-// Far_Read to fetch it back. The library maps the segment once and copies the whole
-// run with a fast LDIR, instead of paging in and out for every byte.
-//
-// Here: save the hero's name into a segment, then load it back — exactly what a
-// "continue?" screen does when it reads your save.
+// For more than a byte or two — a save slot, a sprite, a line of text — copy the whole block
+// at once. Far_Write sends a buffer out to mapper RAM; Far_Read fetches it back. The library
+// maps the bank once and moves the run with a fast LDIR, instead of paging in and out per byte.
 #include "farmem.h"
+
+#define BANK_SAVE  19       // the bank we use as a save slot
+#define OFF_NAME   0        // where the name field sits inside the slot
+
+// Write the hero's name into the save slot.
+void savegame_store_name(const c8* name)
+{
+	Far_Write(FAR(BANK_SAVE, OFF_NAME), name, 4);
+}
+
+// Read the hero's name back (e.g. for the "continue?" screen).
+void savegame_load_name(c8* out)
+{
+	Far_Read(FAR(BANK_SAVE, OFF_NAME), out, 4);
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
 volatile u8 __at(0xE000) R[8];
-
-#define SEG_SAVE   19       // segment we use as a save slot
-#define OFF_NAME   0        // offset of the name field within the slot
-
 void main(void)
 {
-	c8 hero_name[4] = { 'A', 'L', 'E', 'X' };   // the name the player entered
-	c8 loaded[4];                               // where we will read it back into
+	c8 loaded[4];
 	MemSeg_Init(16);
-
-	Far_Write(FAR(SEG_SAVE, OFF_NAME), hero_name, 4);   // SAVE: store the 4 letters
-	Far_Read(FAR(SEG_SAVE, OFF_NAME), loaded, 4);       // LOAD: read them back later
-
-	R[1] = loaded[0]; R[2] = loaded[1]; R[3] = loaded[2]; R[4] = loaded[3];   // 'A' 'L' 'E' 'X'
+	savegame_store_name("ALEX");            // the player named their hero ALEX
+	savegame_load_name(loaded);             // ...and later we load it back
+	R[1] = loaded[0]; R[2] = loaded[1]; R[3] = loaded[2]; R[4] = loaded[3];
 	R[0] = (loaded[0]=='A' && loaded[1]=='L' && loaded[2]=='E' && loaded[3]=='X')
 	       ? 0xA5 : 0x00;
 	for (;;) {}

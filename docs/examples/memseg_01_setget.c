@@ -1,31 +1,26 @@
-// SEGMENT WINDOWING — the raw mechanism behind "banking".
+// banks.c — flip which 16 KB bank of mapper RAM is visible in the window.
 //
-// The Z80 can only address 64 KB at once, but an MSX memory mapper holds much more
-// (512 KB and up), split into 16 KB "segments" (think: interchangeable cartridges).
-// You choose which segment is visible through a fixed "window" at address 0x8000.
-// Only ONE segment shows through the window at a time; swapping is instant.
-//
-// Snag: the hardware register that selects the segment is WRITE-ONLY — you can set it
-// but not read it back. So the library keeps a software note of the current segment.
-// MemSeg_Init picks a starting ("home") segment; MemSeg_SetWindow swaps another one in;
-// MemSeg_GetWindow tells you which is showing right now.
-//
-// Here: a game keeps its title screen in one segment and level 1 in another, and flips
-// the window between them.
+// A RAM mapper holds many 16 KB "banks" (512 KB = 32 of them). Only one shows through the
+// window (at 0x8000) at a time; you pick which. MemSeg_SetWindow makes a bank visible;
+// MemSeg_GetWindow tells you which one is showing. (The selecting register is write-only, so
+// the library keeps a software note — that's what GetWindow reads.)
 #include "memseg.h"
+
+#define BANK_TITLE   16     // the bank holding the title screen
+#define BANK_LEVEL1  20     // ...and the bank holding level 1
+
+void show_title(void)   { MemSeg_SetWindow(BANK_TITLE); }
+void show_level1(void)  { MemSeg_SetWindow(BANK_LEVEL1); }
+u8   visible_bank(void) { return MemSeg_GetWindow(); }
+
+// ---- test harness (not shown in the docs) --------------------------------
 volatile u8 __at(0xE000) R[4];
-
-#define SEG_TITLE   16      // 16 KB segment holding the title screen
-#define SEG_LEVEL1  20      // ...and the one holding level 1
-
 void main(void)
 {
-	MemSeg_Init(SEG_TITLE);              // start with the title-screen segment in the window
-	R[1] = MemSeg_GetWindow();           // which segment is showing? -> 16 (SEG_TITLE)
-
-	MemSeg_SetWindow(SEG_LEVEL1);        // flip to the level-1 segment
-	R[2] = MemSeg_GetWindow();           // now showing -> 20 (SEG_LEVEL1)
-
-	R[0] = (R[1] == SEG_TITLE && R[2] == SEG_LEVEL1) ? 0xA5 : 0x00;
+	MemSeg_Init(BANK_TITLE);         // start up with the title bank visible
+	R[1] = visible_bank();           // -> 16 (BANK_TITLE)
+	show_level1();                   // flip to the level-1 bank
+	R[2] = visible_bank();           // -> 20 (BANK_LEVEL1)
+	R[0] = (R[1] == BANK_TITLE && R[2] == BANK_LEVEL1) ? 0xA5 : 0x00;
 	for (;;) {}
 }

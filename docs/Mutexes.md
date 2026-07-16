@@ -29,60 +29,53 @@ void Mutex_Wait(u8 mutex);     // busy-wait until free
 `MUTEX_DATA()` defines `g_Mutex`. The module deliberately does not define it for you, so it costs
 nothing if you never use it.
 
-## Taking and releasing a lock
+## Guarding the sprite table
+
+Give the shared resource one named lock and wrap it in verbs. Here the resource is the sprite
+table: the main loop claims it while it rewrites it, and the interrupt handler will ask
+`sprites_free()` before drawing. Taking the lock sets bit 3 of `g_Mutex` (`0x08`); the other seven
+locks are untouched.
 
 ```c
+// sprite_lock.c — one lock that keeps the interrupt handler off the sprite table
+// while the main loop is halfway through rewriting it.
 #include "mutex.h"
-volatile u8 __at(0xE000) R[8];
 
-MUTEX_DATA();               // defines g_Mutex — required once per application
+MUTEX_DATA();               // reserves g_Mutex — once per application
 
-#define MTX_VRAM  3         // name your locks
+#define LOCK_SPRITES  3     // name the lock instead of hard-coding bit 3
 
-void main(void)
-{
-	Mutex_Init();                             // all 8 locks free
-	R[1] = Mutex_Gate(MTX_VRAM) ? 1 : 0;      // 1 — free
-
-	Mutex_Lock(MTX_VRAM);
-	R[2] = g_Mutex;                           // 0x08 — bit 3 set
-	R[3] = Mutex_Gate(MTX_VRAM) ? 1 : 0;      // 0 — taken
-	R[4] = Mutex_Gate(2) ? 1 : 0;             // 1 — other locks unaffected
-
-	Mutex_Release(MTX_VRAM);
-	Mutex_Wait(MTX_VRAM);                     // returns at once: it is free
-	R[5] = g_Mutex;                           // 0x00
-
-	R[0] = (R[1] == 1 && R[2] == 0x08 && R[3] == 0 && R[4] == 1 && R[5] == 0)
-	     ? 0xA5 : 0x00;
-	for (;;) {}
-}
+void sprites_init(void)   { Mutex_Init(); }
+void sprites_lock(void)   { Mutex_Lock(LOCK_SPRITES); }
+void sprites_unlock(void) { Mutex_Release(LOCK_SPRITES); }
+bool sprites_free(void)   { return Mutex_Gate(LOCK_SPRITES); }
 ```
 
-Runs to `R[] = a5 01 08 00 01 00`. *(tested: `mutex_01_locks.c`)*
+After `sprites_init()` every lock is free, so `sprites_free()` is true. `sprites_lock()` makes
+`g_Mutex == 0x08` and `sprites_free()` false, while a different lock still reads free.
+`sprites_unlock()` clears it back to `0x00`. *(tested: `mutex_01_locks.c`)*
 
-## Guarding the VDP against the ISR
+## Using it across the main loop and the ISR
 
-The main loop takes the lock around its VRAM work; the ISR *gates* on it and skips its own update if
-the lock is held. This is the safe direction — the ISR never blocks.
+The main loop takes the lock around its sprite-table work; the ISR *gates* on it with
+`sprites_free()` and skips its own update if the lock is held. This is the safe direction — the ISR
+never blocks.
 
 ```c
-#define MTX_VRAM  3
-
 void MyIsr(void)                      // called from the interrupt hook
 {
-	if (!Mutex_Gate(MTX_VRAM))        // main is mid-VRAM-write: leave it alone
+	if (!sprites_free())              // main is mid-update: leave the table alone
 		return;
-	VDP_Poke_16K(g_HudAddr, g_Frame); // safe this frame
+	Sprite_Update();                  // safe this frame
 }
 
 void main(void)
 {
-	Mutex_Init();
+	sprites_init();
 	for (;;) {
-		Mutex_Lock(MTX_VRAM);
-		Draw_FillBox(0, 0, 32, 16, 4);   // ISR will not touch VRAM during this
-		Mutex_Release(MTX_VRAM);
+		sprites_lock();
+		Sprite_SetPosition(0, x, y);  // ISR will not read the table during this
+		sprites_unlock();
 		VDP_WaitVBlank();
 	}
 }

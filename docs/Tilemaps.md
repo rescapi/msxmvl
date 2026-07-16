@@ -24,42 +24,32 @@ void Tile_DrawScreen(const u8* map);                                   // draw a
 void Tile_DrawMapChunk(u8 x, u8 y, const u8* map, u8 width, u8 height);// draw a sub-rectangle
 ```
 
-## Usage (tested)
+## Drawing a level chunk (tested)
 
-Set the draw page / bank, fill a tileset, then draw a map. Here the bank is filled with a known
-pattern (`0x99`) and the screen with a background (`0x11`); the 2×2 map's index `0` is the
-transparent `TILE_SKIP_INDEX` (left as background) while the others are drawn — so reading VRAM
-shows exactly which cells were painted.
+A level is just an array of tile indices. `Tile_DrawMapChunk` paints a rectangle of that map onto
+the screen — the everyday way to draw a room, or to refresh only the part of the level that
+scrolled into view. Index `0` is the transparent `TILE_SKIP_INDEX`: cells holding it are left
+untouched, so a chunk can be overlaid without erasing what's behind it.
 
 ```c
+// level.c — draw a chunk of the level's tile map onto the screen.
 #include "vdp.h"
 #include "tile.h"
-volatile u8 __at(0xE000) R[8];
 
+// A 2x2 corner of the level map. Tile 0 is transparent (skipped); 2,3,4 are drawn.
 static const u8 g_Map[4] = { 0, 2, 3, 4 };   // index 0 = skip (transparent)
 
-void main(void)
+// Draw the 2x2 level chunk at screen cell (cx, cy).
+void draw_level_chunk(u8 cx, u8 cy)
 {
-	VDP_SetMode(VDP_MODE_GRAPHIC4);
-	Tile_SetDrawPage(0);
-	Tile_SetBankPage(2);
-	Tile_SelectBank(0);
-	Tile_FillScreen(1);                    // screen background -> 0x11
-	VDP_CommandWait();
-	Tile_FillBank(0, 0x99);                // every tile's bitmap -> 0x99
-	VDP_CommandWait();
-	Tile_DrawMapChunk(0, 0, g_Map, 2, 2);  // draw the 2x2 map at cell (0,0)
-	VDP_CommandWait();
-
-	R[1] = VDP_Peek_16K(0);    // cell (0,0), tile 0 = SKIP -> background 0x11
-	R[2] = VDP_Peek_16K(4);    // cell (1,0), tile 2 = drawn -> 0x99
-	R[0] = (R[1] == 0x11 && R[2] == 0x99) ? 0xA5 : 0x00;
-	for (;;) {}
+	Tile_DrawMapChunk(cx, cy, g_Map, 2, 2);
 }
 ```
 
-Runs to `R[] = a5 11 99` — the transparent cell kept the background, the next cell got the tile.
-*(tested: `tile_01_map.c`)*
+In the test the tileset bank is filled with a known pattern (`0x99`) and the screen with a
+background (`0x11`), then this chunk is drawn at cell `(0,0)`: the transparent tile-`0` cell keeps
+the `0x11` background while the tile-`2` cell next to it becomes `0x99` — reading VRAM back shows
+exactly which cells were painted. *(tested: `tile_01_map.c`)*
 
 In a real project you upload actual tile bitmaps with `Tile_LoadBankEx(0, g_TileSet, 0, count)` and
 paint a full screen with `Tile_DrawScreen(g_Map)`, using `Tile_DrawMapChunk` to refresh only a

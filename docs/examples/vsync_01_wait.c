@@ -1,14 +1,23 @@
-// VDP_WaitVBlank blocks until the next vertical blank, then returns — and it
-// preserves the caller's interrupt-enable state (it masks interrupts internally
-// but restores them). Here we enter with interrupts enabled and confirm they are
-// still enabled after the call (IFF2 read via `ld a,i` -> P/V flag).
+// gameloop.c — pace the game to the display's refresh, tear-free.
+//
+// VDP_WaitVBlank blocks until the next vertical blank, then returns — one call per frame paces
+// the whole game to 50/60 Hz. It masks interrupts internally while it pokes the VDP, but
+// restores the caller's interrupt-enable state on return, so it drops safely into a loop that
+// leaves interrupts on for music or timers.
 #include "vsync.h"
-volatile u8 __at(0xE000) R[2];
 
+// Wait for the start of the next frame's vertical blank.
+void wait_for_frame(void)
+{
+	VDP_WaitVBlank();
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
+volatile u8 __at(0xE000) R[2];
 void main(void)
 {
 	__asm ei __endasm;
-	VDP_WaitVBlank();              // waits one field, then returns (no hang)
+	wait_for_frame();             // waits one field, then returns (no hang)
 
 	__asm
 		ld   a, i                 ; P/V = IFF2 (interrupt-enable state)

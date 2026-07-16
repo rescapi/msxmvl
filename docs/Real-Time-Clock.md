@@ -40,16 +40,18 @@ void RTC_SaveData(u8* data);        // 6 bytes -> battery-backed CMOS
 bool RTC_LoadData(u8* data);        // 6 bytes back; FALSE if no valid save
 ```
 
-## Reading the clock
+## Setting and reading the clock
 
-Each `RTC_Write` here sets **one BCD digit**. Note the gotcha: `RTC_Set24H` has to switch to the
-*alarm* block to do its job, so you must select the time block again afterwards.
+`set_game_time` seeds the in-game clock; `game_hour`/`game_minute` read it back. Each `RTC_Write`
+sets **one BCD digit**. Note the gotcha: `RTC_Set24H` has to switch to the *alarm* block to do its
+job, so you must select the time block again afterwards.
 
 ```c
+// gameclock.c — seed the in-game clock from the MSX real-time clock.
 #include "clock.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+// Set the in-game clock to 13:45 in 24-hour mode.
+void set_game_time(void)
 {
 	RTC_Initialize();          // select the time block (block 0)
 	RTC_Set24H(TRUE);
@@ -59,16 +61,14 @@ void main(void)
 	RTC_Write(RTC_REG_TIME_HOUR,   3);   // -> 13
 	RTC_Write(RTC_REG_TIME_10MIN,  4);
 	RTC_Write(RTC_REG_TIME_MIN,    5);   // -> 45
-
-	R[1] = RTC_GetHour();      // 13
-	R[2] = RTC_GetMinute();    // 45
-
-	R[0] = (R[1] == 13 && R[2] == 45) ? 0xA5 : 0x00;
-	for (;;) {}
 }
+
+u8 game_hour(void)   { return RTC_GetHour(); }
+u8 game_minute(void) { return RTC_GetMinute(); }
 ```
 
-Runs to `R[] = a5 0d 2d` (`0x0d`=13, `0x2d`=45). *(tested: `clock_01_datetime.c`)*
+After `set_game_time()`, `game_hour()` reads back `13` and `game_minute()` reads back `45` — each
+built from its two BCD digit-registers. *(tested: `clock_01_datetime.c`)*
 
 ## Saving 6 bytes without a disk
 
@@ -77,32 +77,24 @@ Block 3 is CMOS RAM kept alive by the machine's battery. `RTC_SaveData` writes *
 cartridge game keeps a high score with no disk drive in the machine at all.
 
 ```c
+// hiscore_cmos.c — keep a high score in battery-backed CMOS, no disk needed.
 #include "clock.h"
-volatile u8 __at(0xE000) R[8];
 
-static u8 g_Save[6] = { 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC };
-static u8 g_Back[6];
-
-void main(void)
+// Persist 6 bytes of save data to CMOS block 3.
+void hiscore_store(u8* data)
 {
-	u8 i, ok = 1;
+	RTC_SaveData(data);                // -> CMOS block 3
+}
 
-	RTC_SaveData(g_Save);              // -> CMOS block 3
-	ok = RTC_LoadData(g_Back) ? 1 : 0; // FALSE if the block holds no valid save
-
-	for (i = 0; i < 6; i++)
-		if (g_Back[i] != g_Save[i])
-			ok = 0;
-
-	R[1] = g_Back[0];    // 0x12
-	R[2] = g_Back[5];    // 0xBC
-
-	R[0] = ok ? 0xA5 : 0x00;
-	for (;;) {}
+// Read the 6 bytes back; FALSE if the block holds no valid save.
+bool hiscore_fetch(u8* data)
+{
+	return RTC_LoadData(data);
 }
 ```
 
-Runs to `R[] = a5 12 bc`. *(tested: `clock_02_savedata.c`)*
+Store six bytes with `hiscore_store(...)`, and `hiscore_fetch(...)` reads them back byte-for-byte,
+returning `FALSE` only when block 3 has never held a valid save. *(tested: `clock_02_savedata.c`)*
 
 **Six bytes is the whole budget** — enough for a high score and a level number, not a save game.
 Check `RTC_LoadData`'s return value: on a machine that has never run your program, the block holds

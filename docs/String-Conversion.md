@@ -17,25 +17,22 @@ becomes `"00258"`. The `ZT` variant appends a `\0`; the plain variant writes jus
 append into a larger buffer). 8-bit variants (`String_FromUInt8ZT` / `String_FromUInt8`) produce
 3 digits.
 
+Drawing the score to the HUD, you format it into a small buffer and then blit that text. The
+fixed 5-digit width keeps the field from jittering as the score grows:
+
 ```c
+// hud.c — render the player's score to text for the on-screen display.
 #include "string.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+// Format a score into a caller-supplied buffer (room for 5 digits + terminator).
+void score_to_text(u16 score, c8* out)
 {
-	c8 buf[8];
-	String_FromUInt16ZT(258, buf);         // "00258\0"
-
-	R[1] = buf[0]; R[2] = buf[1]; R[3] = buf[2]; R[4] = buf[3]; R[5] = buf[4];
-	R[6] = buf[5];                          // 0x00 terminator
-	R[0] = (buf[0]=='0' && buf[1]=='0' && buf[2]=='2' && buf[3]=='5' &&
-	        buf[4]=='8' && buf[5]=='\0') ? 0xA5 : 0x00;
-	for (;;) {}
+	String_FromUInt16ZT(score, out);
 }
 ```
 
-Runs to `R[] = a5 30 30 32 35 38 00` — the ASCII for `"00258"` followed by the terminator.
-*(tested: `string_01_fromuint.c`)*
+`score_to_text(258, buf)` fills `buf` with `"00258"` and a trailing `\0` — the ASCII
+`30 30 32 35 38 00`, ready to draw. *(tested: `string_01_fromuint.c`)*
 
 > **Fixed width is a feature** for aligned displays (scores, timers) — the leading zeros keep the
 > field a constant size. If you want no leading zeros, skip them when drawing, or use

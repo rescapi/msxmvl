@@ -68,24 +68,32 @@ u8   VDP_Peek_16K(u16 src);
 ```
 
 Fill a run of VRAM with one byte; read a single byte back. Filling is the fast way to clear a
-tile map, a bitmap region, or a table.
+tile map, a bitmap region, or a table. A game's status bar is a perfect fit — wipe the whole
+strip to one blank tile before redrawing it, and the address is latched just once:
 
 ```c
+// hud.c — clear the on-screen status bar in VRAM, then sample it back.
 #include "vdp.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define HUD_VRAM    0x1000    // where the status-bar strip sits in VRAM
+#define HUD_WIDTH   16        // bytes in the strip
+#define TILE_BLANK  0x5A      // the "empty" tile we clear it to
+
+// Wipe the whole status bar to the blank tile.
+void hud_clear(void)
 {
-	VDP_FillVRAM_16K(0x5A, 0x1000, 16);     // VRAM[0x1000..0x100F] = 0x5A
+	VDP_FillVRAM_16K(TILE_BLANK, HUD_VRAM, HUD_WIDTH);
+}
 
-	R[1] = VDP_Peek_16K(0x1000);            // 0x5A (first)
-	R[2] = VDP_Peek_16K(0x100F);            // 0x5A (last)
-	R[0] = (R[1] == 0x5A && R[2] == 0x5A) ? 0xA5 : 0x00;
-	for (;;) {}
+// Read one tile of the status bar back.
+u8 hud_peek(u16 offset)
+{
+	return VDP_Peek_16K(HUD_VRAM + offset);
 }
 ```
 
-Runs to `R[] = a5 5a 5a`. *(tested: `vdp_01_fillpeek.c`)*
+`hud_clear()` fills the strip; peeking the first and last tile reads back `0x5A` both times.
+*(tested: `vdp_01_fillpeek.c`)*
 
 ---
 
@@ -97,25 +105,30 @@ u8   VDP_Peek_16K(u16 src);
 ```
 
 Single-byte write/read. Convenient for occasional touches; for runs, prefer `Fill`/`Write` which
-set the VRAM address once and stream (each `Poke`/`Peek` re-latches the address).
+set the VRAM address once and stream (each `Poke`/`Peek` re-latches the address). Changing a
+single cell of the tile name table — a coin picked up, a switch flipped — is exactly this:
 
 ```c
+// tilemap.c — poke individual tiles into the name table, one byte at a time.
 #include "vdp.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+#define NAME_TABLE  0x0200   // base of the tile name table in VRAM
+
+// Put a tile id into a cell of the name table.
+void tile_put(u16 cell, u8 tile)
 {
-	VDP_Poke_16K(0x3C, 0x0200);            // VRAM[0x0200] = 0x3C
-	VDP_Poke_16K(0xC3, 0x0201);            // VRAM[0x0201] = 0xC3
+	VDP_Poke_16K(tile, NAME_TABLE + cell);
+}
 
-	R[1] = VDP_Peek_16K(0x0200);           // 0x3C
-	R[2] = VDP_Peek_16K(0x0201);           // 0xC3
-	R[0] = (R[1] == 0x3C && R[2] == 0xC3) ? 0xA5 : 0x00;
-	for (;;) {}
+// Read the tile id back from a cell.
+u8 tile_get(u16 cell)
+{
+	return VDP_Peek_16K(NAME_TABLE + cell);
 }
 ```
 
-Runs to `R[] = a5 3c c3`. *(tested: `vdp_02_pokepeek.c`)*
+`tile_put(0, 0x3C)` and `tile_put(1, 0xC3)` write two adjacent cells; `tile_get` reads each
+back unchanged. *(tested: `vdp_02_pokepeek.c`)*
 
 ---
 
@@ -127,28 +140,31 @@ void VDP_ReadVRAM_16K(u16 src, u8* dest, u16 count);
 ```
 
 Block transfer between a RAM buffer and VRAM — how you upload tile/sprite/bitmap data and read it
-back. One address setup, then a streamed run.
+back. One address setup, then a streamed run. Getting a tile's pattern from a ROM array into
+VRAM so the VDP can draw it is the everyday use:
 
 ```c
+// tileset.c — upload a tile's pattern into VRAM and read it back.
 #include "vdp.h"
-volatile u8 __at(0xE000) R[8];
 
-void main(void)
+#define PATTERN_VRAM  0x0800    // where this tile's pattern goes in VRAM
+#define TILE_BYTES    4         // bytes in the pattern
+
+// Upload a tile's pattern bytes to VRAM.
+void tile_upload(const u8* pattern)
 {
-	const u8 tile[4] = { 0x12, 0x34, 0x56, 0x78 };
-	u8 back[4];
+	VDP_WriteVRAM_16K(pattern, PATTERN_VRAM, TILE_BYTES);
+}
 
-	VDP_WriteVRAM_16K(tile, 0x0800, 4);    // upload 4 bytes to VRAM 0x0800
-	VDP_ReadVRAM_16K(0x0800, back, 4);     // read them back into RAM
-
-	R[1] = back[0]; R[2] = back[1]; R[3] = back[2]; R[4] = back[3];
-	R[0] = (back[0]==0x12 && back[1]==0x34 && back[2]==0x56 && back[3]==0x78)
-	       ? 0xA5 : 0x00;
-	for (;;) {}
+// Read a tile's pattern back out of VRAM.
+void tile_download(u8* out)
+{
+	VDP_ReadVRAM_16K(PATTERN_VRAM, out, TILE_BYTES);
 }
 ```
 
-Runs to `R[] = a5 12 34 56 78`. *(tested: `vdp_03_writeread.c`)*
+Upload a four-byte pattern with `tile_upload`, fetch it with `tile_download`, and the bytes come
+back exactly as sent. *(tested: `vdp_03_writeread.c`)*
 
 > **128 KB variants.** `VDP_WriteVRAM_128K` / `VDP_ReadVRAM_128K` / `VDP_Poke_128K` /
 > `VDP_Peek_128K` take a split `low`/`high` address to reach all of VRAM — needed for SCREEN 7/8
@@ -164,22 +180,24 @@ void VDP_RegWrite(u8 reg, u8 value);
 
 Write any VDP control register directly — the escape hatch for anything the typed helpers don't
 cover. (Many convenience wrappers in `vdp.h` are thin `VDP_RegWrite` calls, e.g. `VDP_SetColor(c)`
-is `VDP_RegWrite(7, c)`.)
+is `VDP_RegWrite(7, c)`.) Setting the border/backdrop colour is a one-register write to R#7:
 
 ```c
+// backdrop.c — set the border/backdrop colour with a raw VDP register write.
 #include "vdp.h"
-volatile u8 __at(0xE000) R[2];
 
-void main(void)
+#define VDP_R_COLOR  7      // R#7: text / border / backdrop colour
+#define COLOR_BLUE   0x0A   // palette entry 10
+
+// Paint the screen border/backdrop a colour.
+void backdrop_set(u8 color)
 {
-	VDP_RegWrite(7, 0x0A);         // R#7 = backdrop color 10
-	R[0] = 0xA5;                   // reached here; R#7 value checked by the harness
-	for (;;) {}
+	VDP_RegWrite(VDP_R_COLOR, color);
 }
 ```
 
-The harness reads VDP R#7 back from hardware: `0x0A`. *(tested: `vdp_04_regwrite.c`, with
-`EX_VREG_ASSERT="7=0a"`)*
+`backdrop_set(COLOR_BLUE)` sets R#7 to colour 10; the harness reads VDP R#7 back from hardware
+and confirms `0x0A`. *(tested: `vdp_04_regwrite.c`, with `EX_VREG_ASSERT="7=0a"`)*
 
 ## Beyond the core
 

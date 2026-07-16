@@ -28,28 +28,26 @@ u16  Display_GetBackPageY(void);       // back page * 256: add to a command's DY
 `GetBackPageY()` is the one you use every frame: add it to a VDP command's destination Y so the
 draw lands in the hidden page rather than the visible one.
 
-**Example — inspect the initial state.**
+**Example — bring up double buffering and name the pages your renderer draws to.**
 
 ```c
+// render.c — set up double buffering and find the hidden page to draw into.
 #include "display.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+// Bring up double buffering: show page 0, draw into page 1.
+void render_init(void)
 {
 	Display_InitDoubleBuffer();
-
-	R[1] = Display_GetFrontPage();          // 0 (shown)
-	R[2] = Display_GetBackPage();           // 1 (hidden, draw here)
-	R[3] = (u8)(Display_GetBackPageY() >> 8);   // 256>>8 = 1
-
-	R[0] = (Display_GetFrontPage() == 0 &&
-	        Display_GetBackPage()  == 1 &&
-	        Display_GetBackPageY() == 256) ? 0xA5 : 0x00;
-	for (;;) {}
 }
+
+u8  visible_page(void) { return Display_GetFrontPage(); }   // page on screen
+u8  draw_page(void)    { return Display_GetBackPage(); }    // hidden page, draw here
+u16 draw_page_y(void)  { return Display_GetBackPageY(); }   // Y offset of the hidden page
 ```
 
-Runs to `R[] = a5 00 01 01` — front 0, back 1, back-page Y offset 256. *(tested: `display_01_pages.c`)*
+After `render_init()`, `visible_page()` is 0 (shown), `draw_page()` is 1 (hidden), and
+`draw_page_y()` is 256 — the Y offset you add to every draw so it lands off-screen.
+*(tested: `display_01_pages.c`)*
 
 ---
 
@@ -63,28 +61,24 @@ Swaps front and back: what you just drew becomes visible, and the previously vis
 becomes your next draw target. **It does not wait for vblank** — call
 [`VDP_WaitVBlank()`](VBlank-Sync.md) first for a tear-free flip.
 
-**Example — two flips return to the start.**
+**Example — present a finished frame; two flips return to the start.**
 
 ```c
+// render.c — flip the freshly drawn page onto the screen.
 #include "display.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+// Reveal the frame we just drew; the old screen becomes the next draw target.
+void present_frame(void)
 {
-	Display_InitDoubleBuffer();    // front=0 back=1
-	Display_Flip();                // front=1 back=0
-	R[1] = Display_GetFrontPage(); // 1
-	R[2] = Display_GetBackPage();  // 0
-
-	Display_Flip();                // front=0 back=1 again
-	R[3] = Display_GetFrontPage(); // 0
-
-	R[0] = (R[1] == 1 && R[2] == 0 && R[3] == 0) ? 0xA5 : 0x00;
-	for (;;) {}
+	Display_Flip();
 }
+
+u8 visible_page(void) { return Display_GetFrontPage(); }   // page on screen
+u8 draw_page(void)    { return Display_GetBackPage(); }    // hidden page, draw here
 ```
 
-Runs to `R[] = a5 01 00 00`. *(tested: `display_02_flip.c`)*
+Starting from front 0 / back 1, one `present_frame()` makes `visible_page()` read 1 and
+`draw_page()` read 0; a second `present_frame()` returns to front 0. *(tested: `display_02_flip.c`)*
 
 ### The canonical frame loop
 
@@ -110,22 +104,24 @@ Writes R#2 = `(page << 5) | 0x1F`. `Init` and `Flip` call this internally; use i
 for manual page control (e.g. a static split-screen). It does **not** touch the front/back
 bookkeeping.
 
-**Example — select page 3; R#2 must become `0x7F`.**
+**Example — park the display on a static title page; R#2 must become `0x7F`.**
 
 ```c
+// render.c — manually select which page the VDP scans out.
 #include "display.h"
-volatile u8 __at(0xE000) R[2];
 
-void main(void)
+#define PAGE_TITLE  3      // the page holding a full-screen title image
+
+// Park the display on the title page.
+void show_title_screen(void)
 {
-	Display_ShowPage(3);           // R#2 = (3<<5)|0x1F = 0x7F
-	R[0] = 0xA5;                   // reached here without hanging; R#2 checked by harness
-	for (;;) {}
+	Display_ShowPage(PAGE_TITLE);
 }
 ```
 
-The harness reads VDP R#2 back from hardware: `0x7F`, confirming the register math.
-*(tested: `display_03_showpage.c`, with `EX_VREG_ASSERT="2=7f"`)*
+`show_title_screen()` selects page 3, so the harness reads VDP R#2 back as `0x7F` —
+`(3 << 5) | 0x1F`, confirming the register math. *(tested: `display_03_showpage.c`, with
+`EX_VREG_ASSERT="2=7f"`)*
 
 ## See also
 

@@ -21,25 +21,27 @@ pressed".
 u8 Keyboard_Read(u8 row);   // 8 column bits of `row`; a 0 bit = key held (active-low)
 ```
 
-The direct, low-level read of one matrix row. Test a specific key by masking its bit. `KEY_SPACE`
-is row 8, bit 0:
+The direct, low-level read of one matrix row. Test a specific key by masking its bit. Here
+`KEY_SPACE` (row 8, bit 0) is the jump button — reading "is it held" every frame is exactly what
+you want for jump, thrust, or movement:
 
 ```c
+// controls.c — is the jump button held down right now?
 #include "input.h"
-volatile u8 __at(0xE000) R[2];
 
-void main(void)
+#define JUMP_ROW  8      // SPACE lives in matrix row 8...
+#define JUMP_BIT  0x01   // ...as bit 0 (active-low: 0 = pressed)
+
+// True while the player is holding the jump button.
+u8 jump_held(void)
 {
-	for (;;) {
-		u8 row8 = Keyboard_Read(8);         // bit 0 = SPACE (0 = pressed)
-		if ((row8 & 1) == 0)
-			R[0] = 0xA5;                    // SPACE is currently down
-	}
+	return (Keyboard_Read(JUMP_ROW) & JUMP_BIT) == 0;
 }
 ```
 
-Runs to `R[] = a5` while SPACE is held. Good for movement keys and anything where "held" is what
-you want. *(tested: `input_01_keydown.c`, harness holds row 8 bit 0)*
+`jump_held()` masks SPACE's bit and, because reads are active-low, returns true when it is `0`.
+Good for movement keys and anything where "held" is what you want. *(tested:
+`input_01_keydown.c`, harness holds row 8 bit 0)*
 
 ---
 
@@ -60,25 +62,28 @@ and `Keyboard_IsKeyPushed` compares them.
 > `new`/`old` arrays (11 bytes each) so your program owns the key state.
 
 ```c
+// controls.c — did the player just press fire this frame (a fresh press, not a hold)?
 #include "input.h"
-volatile u8 __at(0xE000) R[2];
 
-static u8 kb_new[11], kb_old[11];      // this program's key state (current + previous)
+static u8 kb_new[11], kb_old[11];      // this game's key state (current + previous)
 
-void main(void)
+// Call once at startup so the game owns its key-state buffers.
+void controls_init(void)
 {
 	Keyboard_SetBuffer(kb_new, kb_old);
+}
 
-	for (;;) {
-		Keyboard_Update();                 // rescan: old <- new, new <- matrix
-		if (Keyboard_IsKeyPushed(KEY_SPACE))
-			R[0] = 0xA5;                    // fired on the SPACE press edge
-	}
+// Call once per frame; true only on the frame FIRE (SPACE) was pressed.
+u8 fire_pressed(void)
+{
+	Keyboard_Update();                 // rescan: old <- new, new <- matrix
+	return Keyboard_IsKeyPushed(KEY_SPACE);
 }
 ```
 
-Runs to `R[] = a5` — the edge fired once when SPACE went down. Call `Keyboard_Update` exactly
-once per frame (e.g. right after `VDP_WaitVBlank`). *(tested: `input_02_pushed.c`)*
+`fire_pressed()` returns true once per press, not once per frame held — one shot for firing or
+confirming a menu. Call it (and `Keyboard_Update`) exactly once per frame, e.g. right after
+`VDP_WaitVBlank`. *(tested: `input_02_pushed.c`)*
 
 ## Beyond the keyboard
 

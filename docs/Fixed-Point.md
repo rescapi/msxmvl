@@ -25,23 +25,28 @@ i8 QMN_Get8(u16 q, i8 a);   // unpack a fixed-point value back to an integer
 (`Q7_1_SET(a)`, `Q7_1_GET(a)`, `Q7_1_FRAC(a)`) when the format is fixed and you want zero
 call overhead.
 
+Keeping a sprite's position in Q7.1 lets it move in half-pixel steps. Pack the whole-pixel
+coordinate going in, and unpack the whole-pixel part when it's time to draw:
+
 ```c
+// physics.c — sub-pixel positions using Q7.1 fixed-point.
 #include "fixed_point.h"
-volatile u8 __at(0xE000) R[4];
 
-void main(void)
+// Convert a whole-pixel coordinate into a Q7.1 sub-pixel position.
+i8 to_subpixel(i8 pixels)
 {
-	i8 packed = QMN_Set8(Q7_1, 10);        // 10 in Q7.1 -> 20
-	i8 back    = QMN_Get8(Q7_1, packed);   // 20 -> 10
+	return QMN_Set8(Q7_1, pixels);
+}
 
-	R[1] = (u8)packed;                     // 20
-	R[2] = (u8)back;                       // 10
-	R[0] = (packed == 20 && back == 10) ? 0xA5 : 0x00;
-	for (;;) {}
+// Recover the whole-pixel coordinate to draw the sprite at.
+i8 to_pixel(i8 subpixel)
+{
+	return QMN_Get8(Q7_1, subpixel);
 }
 ```
 
-Runs to `R[] = a5 14 0a` — `10` packs to `20` in Q7.1 and unpacks back to `10`. *(tested:
+`to_subpixel(10)` stores `10` as `20` (x2 for the one fraction bit) and `to_pixel` brings it back
+to `10` — the round trip that surrounds a frame of sub-pixel movement. *(tested:
 `fixed_01_qmn.c`)*
 
 > **Why fixed-point?** Smooth sub-pixel movement, velocities, and easing without floats. Keep a

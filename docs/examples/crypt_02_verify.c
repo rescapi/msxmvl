@@ -1,10 +1,23 @@
-// Example: the awkward cases — zero bytes, key wrap, bad input, custom tables.
+// verify.c — accept a typed-in continue code only if it decodes cleanly.
 //
-// The round-trip example proves the happy path. This one proves the edges, because
-// crypt is hand-written assembly and a 4-byte round-trip does not exercise:
+// A continue code the player writes down (or edits) is trusted only after
+// Crypt_Decode accepts it: the function returns FALSE the moment it meets a character
+// that isn't in the alphabet — which is exactly how you catch a typo, or a tampered
+// save code, instead of loading garbage.
+#include "crypt.h"
+
+// Verify + decode a continue code. FALSE means "reject it, show WRONG CODE".
+bool verify_code(const c8* code, u8* progress)
+{
+	return Crypt_Decode(code, progress);
+}
+
+// ---- test harness (not shown in the docs) --------------------------------
+//
+// The round-trip example proves the happy path. This harness proves the edges,
+// because crypt is hand-written assembly and a 4-byte round-trip does not exercise:
 //   the early-exit when a byte XORs to ZERO, key cycling, the failure paths, or a
 //   caller-supplied map/code table.
-#include "crypt.h"
 volatile u8 __at(0xE000) R[8];
 
 // Deliberately includes 0x00 and 0xFF, and a byte that XORs to zero against the key.
@@ -24,14 +37,14 @@ void main(void)
 	// --- 1. no key set -> both calls must FAIL, not scribble ---------------
 	Crypt_SetKey((const c8*)0);
 	if (Crypt_Encode(g_Data, 8, g_Str))  ok = 0;
-	if (Crypt_Decode("AAAA", g_Back))    ok = 0;
+	if (verify_code("AAAA", g_Back))     ok = 0;
 	R[1] = ok;
 
 	// --- 2. round trip, 1-char key (wraps on EVERY byte), zeros in data ----
 	Crypt_SetKey("Z");
 	if (!Crypt_Encode(g_Data, 8, g_Str)) ok = 0;
 	for (i = 0; i < 8; ++i) g_Back[i] = 0xAA;
-	if (!Crypt_Decode(g_Str, g_Back))    ok = 0;
+	if (!verify_code(g_Str, g_Back))     ok = 0;
 	for (i = 0; i < 8; ++i)
 		if (g_Back[i] != g_Data[i]) ok = 0;
 	R[2] = (u8)(g_Str[16] == 0);         // terminated at size*2
@@ -46,7 +59,7 @@ void main(void)
 
 	// --- 4. a character that is not in the map -> Decode must FAIL ---------
 	g_Str[3] = '!';
-	if (Crypt_Decode(g_Str, g_Back))     ok = 0;
+	if (verify_code(g_Str, g_Back))      ok = 0;
 
 	// --- 5. caller-supplied map AND code table -> still round-trips --------
 	Crypt_SetMap(g_MyMap);
@@ -54,7 +67,7 @@ void main(void)
 	Crypt_SetKey("key");                 // 3-char key over 8 bytes: wraps twice
 	if (!Crypt_Encode(g_Data, 8, g_Str)) ok = 0;
 	for (i = 0; i < 8; ++i) g_Back[i] = 0xAA;
-	if (!Crypt_Decode(g_Str, g_Back))    ok = 0;
+	if (!verify_code(g_Str, g_Back))     ok = 0;
 	for (i = 0; i < 8; ++i)
 		if (g_Back[i] != g_Data[i]) ok = 0;
 	R[3] = (u8)g_Str[0];                 // a character from the CUSTOM map
