@@ -565,9 +565,12 @@ for i in $(seq 1 $(( ${#SEGS[@]} - 1 )) ); do
       < <(awk '$1=="S" && $3 ~ /^Def/ {print $2}' "$obj")
   done
   gopts=()
-  for obj in ${OBJS[$i]}; do
-    while read -r name; do
-      [ -z "${BDEF[$name]:-}" ] && [ -n "${RSYM[$name]:-}" ] && gopts+=( -g "$name=${RSYM[$name]}" )
+  unset ginj; declare -A ginj=()   # dedupe: a symbol referenced by several of the
+  for obj in ${OBJS[$i]}; do        # bank's .rel files must be injected only ONCE
+    while read -r name; do          # (sdld errors on a duplicate -g).
+      if [ -z "${BDEF[$name]:-}" ] && [ -n "${RSYM[$name]:-}" ] && [ -z "${ginj[$name]:-}" ]; then
+        gopts+=( -g "$name=${RSYM[$name]}" ); ginj[$name]=1
+      fi
     done < <(awk '$1=="S" && $3 ~ /^Ref/ {print $2}' "$obj")
   done
   link_bank "${RUNS[$i]}" "$NEXT" "$base" _bp_bankorder.rel ${OBJS[$i]} $(shadow_gflags ${OBJS[$i]}) "${gopts[@]}"
