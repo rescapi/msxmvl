@@ -1,6 +1,6 @@
 # bankpack
 
-Turns "banked code" into a real **ASCII-8 MegaROM**. Pure bash + the SDCC toolchain
+Turns "banked code" into a real **ASCII-8 or ASCII-16 MegaROM**. Pure bash + the SDCC toolchain
 (`sdldz80`, `sdasz80`, `sdobjcopy`) + coreutils. **No Python.** Two modes:
 
 ```sh
@@ -23,7 +23,7 @@ The developer writes plain C + a manifest; bankpack generates the glue:
    assemble the ROM.
 
 Caller-side, a cross-bank call is just `far_<name>(args)`; the bank *defines*
-`<name>(...)` normally. See `test/farturnkey/` for an all-C worked example.
+`<name>(...)` normally. See `examples/banking/farturnkey/` for an all-C worked example.
 
 ## Manifest
 
@@ -50,7 +50,15 @@ Data-model keywords (all optional):
 RAMBASE 0xC000          # statics RAM base (default 0xC000)
 RESERVE 0xC800 0xC880   # program-owned RAM [lo,hi): build FAILS on collision
 SHADOW  0xE020          # memseg shadow byte (env BANKPACK_SHADOW overrides)
+MAPPER  ASCII16         # cartridge mapper (default ASCII8)
 ```
+
+`MAPPER ASCII16` switches to **16 KB segments**: SEG numbers the 16 KB segment
+(file offset `SEG * 0x4000`), and a single bank may carry up to 16 KB of
+code + const data. Everything else is identical — both mappers select the
+`0x8000` window through the **same register** (`0x7000`), so `farrt.asm`, the
+generated thunks, the far-call cost, and the whole data model carry over
+unchanged. Boot the ROM with `-romtype ASCII16` in openMSX.
 
 ### C-runtime data model (statics in banks)
 
@@ -74,7 +82,7 @@ the bank-2 window); more banks with init data than the table holds.
 
 `SHADOW`/`ADDR_BANK2` are single-sourced in bankpack and injected into
 `farrt.asm` + the generated thunks at **link time** (`-g`), so the .asm files
-cannot drift from the build. Worked example: `test/bankdata/`.
+cannot drift from the build. Worked example: `examples/banking/bankdata/`.
 
 ### FARTAB directive (bank→bank calls)
 
@@ -89,7 +97,7 @@ files) and patches the little-endian address into the table's ROM bytes. A resid
 per-target thunk maps the segment and calls `(table[slot])` — so bank→bank calls
 route through the table and no bank needs another bank's address at link time.
 
-See `test/bankcall/` for a worked example: a C function in segment 5 calls a C
+See `examples/banking/bankcall/` for a worked example: a C function in segment 5 calls a C
 function in segment 6 (nested), verified on hardware.
 
 ## How it stays acyclic
@@ -111,7 +119,8 @@ only **resident** symbols are injectable here.
 
 Each bank's `.ihx` is converted to raw binary with `sdobjcopy -I ihex -O binary`
 (byte 0 = the run-address content) and `dd`'d into a `0xFF`-filled ROM at its
-segment's file offset. A bank larger than 8 KB is a hard error.
+segment's file offset. A bank larger than the segment size (8 KB ASCII-8,
+16 KB ASCII-16) is a hard error.
 
 ## Runtime helpers (`*`, `/`, `long`, `float` in bank code)
 
@@ -124,7 +133,7 @@ bank switch (a helper is a pure register/stack computation — mapper-independen
 
 Measured helper sizes (resident cost, one-time): `*` ~20 B, `u16 /` ~50 B,
 `i16 /` ~110 B, `u32 *` ~280 B, `u32 /` ~150 B, `float` ~1.9 KB. Nothing to do —
-`u16 a*b` in a banked C function just works (see `test/farturnkey`, bank 6 = `y*y`).
+`u16 a*b` in a banked C function just works (see `examples/banking/farturnkey`, bank 6 = `y*y`).
 
 `z80.lib` is auto-located; override with `BANKPACK_Z80LIB=/path/to/z80.lib`.
 
@@ -141,7 +150,7 @@ A hard failure aborts the build (`CHECK FAIL: ...`). Note that a plain
 `foo()` instead of `far_foo()` to a bank function is *already* caught earlier as
 an undefined-symbol link error, since bank symbols aren't injected into callers.
 
-## Far-call cost (measured, `test/bankperf`)
+## Far-call cost (measured, `examples/banking/bankperf`)
 
 Exact T-states on C-BIOS/openMSX, interrupts off: **a far-call costs ~170 T-states
 (~47 us) over a near call** — so ~350 far-calls fill a 60 Hz frame. Bank *cold*
@@ -177,14 +186,15 @@ ride in `A`) and more than ~3 args (they spill to the stack). Use `u16`.
 
 ## Working examples
 
-- `test/bank2/`      — asm banks; window switch + bank→resident call.
-- `test/bankcall/`   — C banks; nested bank→bank call via a hand-written table.
-- `test/farturnkey/` — **all C + manifest**; thunks/table/header generated.
-- `test/bankdata/`   — **statics in every bank** (init data + BSS + `RESERVE`),
+- `examples/banking/bank2/`      — asm banks; window switch + bank→resident call.
+- `examples/banking/bankcall/`   — C banks; nested bank→bank call via a hand-written table.
+- `examples/banking/farturnkey/` — **all C + manifest**; thunks/table/header generated.
+- `examples/banking/bankdata/`   — **statics in every bank** (init data + BSS + `RESERVE`),
   asserted on C-BIOS_MSX1 and C-BIOS_MSX2.
+- `examples/banking/bank16/`     — **ASCII-16**: 16 KB segments, a bank with a checksummed
+  **>8 KB payload**, the statics model intact, on both machines.
 
 ## Not yet handled (roadmap)
 
-- ASCII-16 / other segment sizes (currently 8 KB fixed).
 - Unify the runtime shadow with `lib/ext/memseg` (farrt uses its own shadow byte,
   though its address is now the manifest's `SHADOW`).

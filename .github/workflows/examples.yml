@@ -41,3 +41,11 @@ jobs:
         run: |
           cd docs/examples
           bash run_all_msx1.sh
+
+      - name: Banking examples — build + run ASCII-8/ASCII-16 MegaROMs
+        run: |
+          for d in examples/banking/*/; do
+            [ -f "$d/run.sh" ] || continue
+            echo "== $d"
+            bash "$d/run.sh"
+          done
