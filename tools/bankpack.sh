@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bankpack -- turnkey ASCII-8 MegaROM builder for banked code.
+# bankpack -- turnkey ASCII-8 / ASCII-16 MegaROM builder for banked code.
 #
 # Pure bash + SDCC toolchain + coreutils (no Python). Two modes:
 #
@@ -22,6 +22,12 @@
 #                                     build FAILS if the layout or SHADOW touches it
 #   SHADOW  <addr>                    memseg shadow byte (default 0xE020;
 #                                     env BANKPACK_SHADOW overrides)
+#   MAPPER  ASCII8|ASCII16            cartridge mapper (default ASCII8).
+#                                     ASCII16 = 16 KB segments, so a single bank
+#                                     may carry up to 16 KB of code+data. Both
+#                                     mappers select the 0x8000 window through
+#                                     the SAME register (0x7000), so farrt and
+#                                     the generated thunks are identical.
 #
 # C-RUNTIME DATA MODEL (docs/Code-Banking-Data-Model.md): every bank may have
 # writable C statics. The resident links its _DATA/_INITIALIZED at RAMBASE; each
@@ -37,8 +43,9 @@
 # (they ride in A) and >~3 args (spill to the stack) -- use u16.
 set -uo pipefail
 
-SEGSIZE=8192
-ADDR_BANK2=0x7000        # ASCII-8 bank-2 select (link-time -g symbol, see below)
+ADDR_BANK2=0x7000        # page-2 window select -- same register on ASCII-8 (bank 2)
+                         # and ASCII-16 (bank 2), which is what makes MAPPER a
+                         # pure bankpack concern (link-time -g symbol, see below)
 WINDOW=0x8000            # page-2 window base: banked code runs here, resident below
 SYSTEM_RAM=0xF380        # BIOS work area: statics must stay below this
 DATATAB_MAX=32           # capacity of farrt.asm's _bp_datatab (entries)
@@ -63,7 +70,7 @@ find_z80lib() {
 # ---- shared manifest parse: fills SEGS/RUNS/OBJS, FAR_SEG/FAR_NAME/FAR_PROTO, FARTAB ----
 parse_manifest() {
   SEGS=(); RUNS=(); OBJS=(); FAR_SEG=(); FAR_NAME=(); FAR_PROTO=(); FARTAB=""
-  RAMBASE=""; RESERVES=(); MSHADOW=""
+  RAMBASE=""; RESERVES=(); MSHADOW=""; MAPPER=""
   local a b rest
   while read -r a b rest; do
     [ -z "${a:-}" ] && continue
@@ -85,6 +92,9 @@ parse_manifest() {
       SHADOW)
         [ -n "$b" ] || die "SHADOW needs an address"
         MSHADOW="$b" ;;
+      MAPPER)
+        [ -n "$b" ] || die "MAPPER needs a type (ASCII8 or ASCII16)"
+        MAPPER="$b" ;;
       *)
         [ -n "$b" ] && [ -n "$rest" ] || die "bad manifest line: $a $b $rest"
         SEGS+=("$a"); RUNS+=("$b"); OBJS+=("$rest") ;;
@@ -92,6 +102,11 @@ parse_manifest() {
   done < <(sed 's/#.*//' "$1")
   RAMBASE="${RAMBASE:-0xC000}"
   SHADOW="${BANKPACK_SHADOW:-${MSHADOW:-0xE020}}"
+  case "${MAPPER:-ASCII8}" in
+    ASCII8)  SEGSIZE=8192 ;;
+    ASCII16) SEGSIZE=16384 ;;
+    *) die "unknown MAPPER '${MAPPER}' (supported: ASCII8, ASCII16)" ;;
+  esac
 }
 
 # =====================================================================
@@ -418,4 +433,4 @@ if [ "${#FAR_NAME[@]}" -ge 1 ]; then
                         || die "$problems safety-check failure(s)"
 fi
 
-echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB / 8)) x 8 KB segments)"
+echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB * 1024 / SEGSIZE)) x $((SEGSIZE / 1024)) KB segments, ${MAPPER:-ASCII8})"

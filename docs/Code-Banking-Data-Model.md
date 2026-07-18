@@ -1,7 +1,7 @@
 # Proposal: a C-runtime data model for bankpack (`farrt` globals-init + per-bank data)
 
 **Status:** IMPLEMENTED — `tools/bankpack.sh` (A/C/D) + `lib/ext/farrt.asm` (B), acceptance
-test `test/bankdata/` (green on C-BIOS_MSX1 + MSX2, collision case asserted to fail), docs
+test `examples/banking/bankdata/` (green on C-BIOS_MSX1 + MSX2, collision case asserted to fail), docs
 updated (`Code-Banking.md`, `tools/README.bankpack.md`). The public tree picks the lib/tools/docs
 changes up on the next make_public run (the acceptance test stays private, like all of `test/`).
 Originally motivated by the msxzork ASCII-8 port, which bankpack couldn't build before this.
@@ -9,7 +9,7 @@ Originally motivated by the msxzork ASCII-8 port, which bankpack couldn't build 
 ## Why
 
 `bankpack` + `farrt` today assume banked code has **no writable C statics**. That
-holds for `test/farturnkey` (pure register functions), but not for a real program.
+holds for `examples/banking/farturnkey` (pure register functions), but not for a real program.
 The msxzork Z-machine interpreter is full of statics (VM call-frame stack, screen
 buffers, dictionary token arrays, platform hook pointers), and hit three walls:
 
@@ -48,7 +48,7 @@ buffers, dictionary token arrays, platform hook pointers), and hit three walls:
   addresses then aborts the FARTAB patch. Strip CR after each `sdldz80` link
   (`sed -i 's/\r$//' "$base.noi" "$base.map"`). (msxzork vendors this patch today.)
 
-## Acceptance test (`test/bankdata`, all-C)
+## Acceptance test (`examples/banking/bankdata`, all-C)
 - Resident + a banked module **each with BSS and initialized statics**, plus an
   `__at` reserved region. Assert on emulated MSX (C-BIOS_MSX1 **and** MSX2, like
   `farturnkey`) that every static holds its correct initial value and that

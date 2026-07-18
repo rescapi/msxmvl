@@ -1,0 +1,6 @@
+# bank2 proof -- ASCII-8 MegaROM layout for bankpack.
+# The first data line is the RESIDENT bank; its symbols are injected into the rest.
+#
+# SEG  RUN     OBJ
+  0    0x4000  resident.rel
+  4    0x8000  banked.rel

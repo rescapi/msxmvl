@@ -11,7 +11,7 @@ the library maps the right bank in, runs the code, and maps it back out — auto
 > **Works on MSX1 too.** Banking here uses an **ASCII-8 MegaROM cartridge**: the bank-select
 > register is on the *cartridge*, not in the machine, so it needs nothing from the MSX2 hardware.
 > This is the one way to get a lot of code onto an MSX1, which has no RAM mapper at all. The
-> turnkey test (`test/farturnkey`) runs on both C-BIOS_MSX1 and C-BIOS_MSX2 with identical results.
+> turnkey test (`examples/banking/farturnkey`) runs on both C-BIOS_MSX1 and C-BIOS_MSX2 with identical results.
 
 ## The idea in one picture
 
@@ -146,9 +146,23 @@ RESERVE 0xC800 0xC880
 
 The memseg shadow byte can be moved the same way (`SHADOW 0xE0F0`, or env `BANKPACK_SHADOW`)
 — the value is injected into `farrt.asm` and the generated thunks at link time, so there is a
-single source of truth. The complete tested program for all of this is **`test/bankdata/`**:
+single source of truth. The complete tested program for all of this is **`examples/banking/bankdata/`**:
 resident + two banks, each with initialized statics and BSS, asserted on C-BIOS_MSX1 *and*
 C-BIOS_MSX2, plus a deliberate `RESERVE` collision asserted to fail the build.
+
+## 16 KB banks (ASCII-16)
+
+One manifest line switches the whole build to an **ASCII-16** cartridge with **16 KB
+segments** — for a subsystem (or a const data table) too big for an 8 KB bank:
+
+```
+MAPPER ASCII16
+```
+
+Nothing else changes: both mappers select the window through the same cartridge register, so
+the runtime, the thunks, the call cost, and the statics data model are identical. The tested
+program is **`examples/banking/bank16/`** — a bank carrying a checksummed **~9 KB const table** (impossible
+under ASCII-8), verified on C-BIOS_MSX1 and MSX2.
 
 ## One rule for far functions
 
@@ -165,10 +179,10 @@ inner loop (something called thousands of times per frame) resident, or inside a
 
 ## Reference
 
-- A complete, tested banking ROM is in the source tree at **`test/farturnkey/`** — the snippets
+- A complete, tested banking ROM is in the source tree at **`examples/banking/farturnkey/`** — the snippets
   above are that program (it builds `game.rom` and asserts `play_level(3) == 350` on emulated
-  hardware). `test/bank2`, `test/bankcall`, and `test/bankperf` are progressively richer examples
-  (assembly → C → cost measurement), and **`test/bankdata/`** is the statics data-model
+  hardware). `examples/banking/bank2`, `examples/banking/bankcall`, and `examples/banking/bankperf` are progressively richer examples
+  (assembly → C → cost measurement), and **`examples/banking/bankdata/`** is the statics data-model
   acceptance test (the snippets in the statics section are that program).
 - `tools/README.bankpack.md` — the manifest format and toolchain details.
 

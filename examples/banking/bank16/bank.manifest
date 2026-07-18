@@ -1,0 +1,16 @@
+# bank16: ASCII-16 MegaROM — 16 KB segments, banks with >8 KB of content.
+MAPPER ASCII16
+
+# SEG  RUN     OBJ                       (SEG = 16 KB segment; file @ SEG*0x4000)
+  0    0x4000  farrt.rel main.rel
+  1    0x8000  bankA.rel                 # ~9 KB const table + statics
+  2    0x8000  bankB.rel                 # statics only
+
+FAR 1 u16 a_probe(u16 unused)
+FAR 1 u16 a_sum(u16 unused)
+FAR 2 u16 b_probe(u16 unused)
+FAR 2 u16 b_mutate(u16 v)
+FAR 2 u16 b_readback(u16 unused)
+
+RAMBASE 0xC000
+RESERVE 0xC800 0xC840

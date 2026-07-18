@@ -1,0 +1,9 @@
+# Far-call cost measurement layout.
+# SEG  RUN     OBJ
+  0    0x4000  farrt.rel main.rel
+  5    0x8000  bankA.rel
+  6    0x8000  bankB.rel
+
+FAR 5 u16 leaf(void)
+FAR 5 u16 nestA(void)
+FAR 6 u16 nestB(void)

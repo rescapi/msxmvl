@@ -1,0 +1,10 @@
+# bank->bank call proof -- ASCII-8 MegaROM layout for bankpack.
+#
+# SEG  RUN     OBJ
+  0    0x4000  residentrt.rel     # resident: header, thunks, dispatch table
+  5    0x8000  bankA.rel          # farA  (calls farB)
+  6    0x8000  bankB.rel          # farB  (leaf)
+
+# Dispatch table: base symbol, then slot symbols in order.
+# bankpack patches slot i with the run-address of the named function.
+FARTAB _fartab _farA _farB

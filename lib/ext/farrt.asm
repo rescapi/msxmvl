@@ -1,4 +1,7 @@
-;; farrt.asm -- reusable RESIDENT runtime (crt0) for a banked ASCII-8 ROM.
+;; farrt.asm -- reusable RESIDENT runtime (crt0) for a banked ASCII-8 or
+;; ASCII-16 MegaROM (both mappers select the page-2 window through the same
+;; register, so this file serves both unchanged; bankpack's MAPPER keyword
+;; only changes segment size and file layout).
 ;;
 ;; Provides the cart header, INIT (slot-select so the page-2 window is visible +
 ;; memseg shadow init), the far-call JP-(IX) helper, and the spin the test
@@ -21,7 +24,7 @@
 	;; SHADOW / ADDR_BANK2 are DEFINED AT LINK TIME by bankpack.sh (-g), the
 	;; single source of truth -- this file and the generated thunks cannot drift.
 	.globl SHADOW		; RAM byte: current segment in the page-2 window
-	.globl ADDR_BANK2	; ASCII-8 bank-2 select
+	.globl ADDR_BANK2	; page-2 window select (ASCII-8 and ASCII-16: 0x7000)
 
 	HOME       = 0
 

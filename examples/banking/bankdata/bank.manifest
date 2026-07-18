@@ -1,0 +1,20 @@
+# bankdata: banked ROM whose resident AND banks all have writable C statics.
+#
+# SEG  RUN     OBJ
+  0    0x4000  farrt.rel main.rel
+  5    0x8000  bankA.rel
+  6    0x8000  bankB.rel
+
+# Far-callable functions (register-passed u16, per bankpack convention)
+FAR 5 u16 a_probe(u16 unused)
+FAR 5 u16 a_mutate(u16 v)
+FAR 5 u16 a_readback(u16 unused)
+FAR 6 u16 b_probe(u16 unused)
+FAR 6 u16 b_mutate(u16 v)
+FAR 6 u16 b_readback(u16 unused)
+
+# C-runtime data model: statics live from RAMBASE up (resident first, then each
+# bank in a disjoint slice). The program's own __at region is declared reserved:
+# the build FAILS if the coordinated layout (or SHADOW) would touch it.
+RAMBASE 0xC000
+RESERVE 0xC800 0xC880
