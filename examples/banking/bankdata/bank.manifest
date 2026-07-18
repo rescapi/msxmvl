@@ -1,14 +1,17 @@
 # bankdata: banked ROM whose resident AND banks all have writable C statics.
+# Bank 5 has TWO .rel files that both call a resident helper — the dedup case
+# for bankpack's per-.rel `-g` injection (see bankA2.c / res_helper in main.c).
 #
 # SEG  RUN     OBJ
   0    0x4000  farrt.rel main.rel
-  5    0x8000  bankA.rel
+  5    0x8000  bankA.rel bankA2.rel
   6    0x8000  bankB.rel
 
 # Far-callable functions (register-passed u16, per bankpack convention)
 FAR 5 u16 a_probe(u16 unused)
 FAR 5 u16 a_mutate(u16 v)
 FAR 5 u16 a_readback(u16 unused)
+FAR 5 u16 a2_check(u16 unused)
 FAR 6 u16 b_probe(u16 unused)
 FAR 6 u16 b_mutate(u16 v)
 FAR 6 u16 b_readback(u16 unused)

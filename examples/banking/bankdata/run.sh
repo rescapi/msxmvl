@@ -14,14 +14,14 @@ W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 
 cp "$ROOT/lib/gen/types.h" "$W/"
 cp "$ROOT/lib/ext/farrt.asm" "$W/"
-cp "$DIR/main.c" "$DIR/bankA.c" "$DIR/bankB.c" "$DIR/bank.manifest" "$W/"
+cp "$DIR/main.c" "$DIR/bankA.c" "$DIR/bankA2.c" "$DIR/bankB.c" "$DIR/bank.manifest" "$W/"
 cd "$W"
 
 # 1. generate far.h + thunks; compile / assemble everything
 bash "$BP" --gen bank.manifest . || { echo "GEN FAIL"; exit 1; }
 sdasz80 -o farrt.rel farrt.asm                       || { echo "ASM farrt FAIL"; exit 1; }
 sdasz80 -o _bp_far_thunks.rel _bp_far_thunks.asm     || { echo "ASM thunks FAIL"; exit 1; }
-for c in main bankA bankB; do
+for c in main bankA bankA2 bankB; do
   sdcc -c -mz80 --sdcccall 1 -I. -o "$c.rel" "$c.c"  || { echo "CC $c FAIL"; exit 1; }
 done
 

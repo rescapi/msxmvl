@@ -11,6 +11,12 @@ static u8  res_bss[8];                  // resident BSS
 volatile u8 __at(0xE000) R[8];          // harness result block
 volatile u8 __at(0xC800) dynmem[128];   // reserved region (bank.manifest RESERVE)
 
+// A resident helper that MULTIPLE .rel files in one bank call (bankA + bankA2,
+// both in seg 5). bankpack injects the resolved resident symbol per referencing
+// .rel, so this is the regression case for the duplicate `-g` dedup: without it,
+// sdld aborts on "multiple definition of _res_helper".
+u16 res_helper(u16 x) { return (u16)(x + res_magic); }
+
 void main(void)
 {
 	u8 i, ok;
@@ -40,5 +46,9 @@ void main(void)
 	far_a_mutate(0x31);
 	R[6] = (res_bss[0] == 0xEE && res_magic == 0x1234) ? 1 : 0;
 
-	R[0] = (R[1] & R[2] & R[3] & R[4] & R[5] & R[6]) ? 0xA5 : 0x00;
+	// bank 5's second .rel (bankA2) works: it links (dedup) and reaches the
+	// resident helper it shares with bankA
+	R[7] = far_a2_check(0);
+
+	R[0] = (R[1] & R[2] & R[3] & R[4] & R[5] & R[6] & R[7]) ? 0xA5 : 0x00;
 }

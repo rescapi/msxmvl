@@ -79,6 +79,14 @@ run "$H/scroll_01_offset.c"   "vdp.c scroll.c" a5 8
 # Decompression (compress) — RLEp; uses Mem_Copy/Mem_Set, so memory.c too
 run "$H/compress_01_rlep.c"   "memory.c compress.c" a5 8
 
+# Decompression (unzx0) — ZX0: byte-exact oracle round-trip over a reference-packed
+# corpus (edge cases + a 4 KB block), then a VRAM-target unpack read back from VRAM
+run "$H/unzx0_01_roundtrip.c" "unzx0.c" a5 8
+run "$H/unzx0_02_vram.c"      "unzx0.c" a5 8
+run "$H/unzx7_01_roundtrip.c"     "unzx7.c" a5 8
+run "$H/unpletter_01_roundtrip.c" "unpletter.c" a5 8
+run "$H/unlzsa2_01_roundtrip.c"   "unlzsa2.c" a5 8
+
 # State machine (fsm)
 run "$H/fsm_01_states.c"      "fsm.c" a5 8
 

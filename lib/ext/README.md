@@ -11,6 +11,10 @@ linked on its own, independent of the `gen/` modules.
 | Module | Provides |
 |--------|----------|
 | `display` | SCREEN 5/6 double-buffer page management (draw hidden, flip to show) |
+| `unzx0` | runtime **ZX0** decompressor — LZ-packed data into RAM (`UnZX0`, ties the reference `dzx0_standard` at 69 B / 89.8 T/byte; `UnZX0_fast`, 19% faster and still ROM-safe) or streamed to VRAM (`UnZX0_VRAM`); clean-room, measured ([Compression.md](../../docs/Compression.md)) |
+| `unzx7` | runtime **ZX7** decompressor (`UnZX7`) — ZX0's predecessor, still common; clean-room, byte-exact MSX1+MSX2, ~ties the reference ([Compression.md](../../docs/Compression.md)) |
+| `unpletter` | runtime **Pletter** decompressor (`UnPletter`) — the long-standing MSX-scene LZ format; clean-room, 184 B, byte-exact MSX1+MSX2 |
+| `unlzsa2` | runtime **LZSA2** decompressor (`UnLZSA2`) — ROM-safe & C-callable; clean-room, byte-exact MSX1+MSX2 (prefer `unzx0` for size — see [Compression.md](../../docs/Compression.md)) |
 | `vsync`   | `VDP_WaitVBlank()` — interrupt-safe vertical-blank sync primitive |
 | `g3d`     | fixed-point 3D math: branchless signed 8×8 multiply, sin/cos |
 | `moonblaster` | MoonBlaster 1.4 song playback (.MBM + .MBK) — the original mbplay replayer, interrupt-time-optimised |
