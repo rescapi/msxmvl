@@ -13,6 +13,7 @@ linked on its own, independent of the `gen/` modules.
 | `display` | SCREEN 5/6 double-buffer page management (draw hidden, flip to show) |
 | `vsync`   | `VDP_WaitVBlank()` — interrupt-safe vertical-blank sync primitive |
 | `g3d`     | fixed-point 3D math: branchless signed 8×8 multiply, sin/cos |
+| `moonblaster` | MoonBlaster 1.4 song playback (.MBM + .MBK) — the original mbplay replayer, interrupt-time-optimised |
 
 ## Testing
 

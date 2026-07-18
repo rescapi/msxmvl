@@ -25,7 +25,11 @@ that genuinely need a V9938 or the MSX2 RAM mapper are excluded rather than fudg
 of `run_all_msx1.sh` for the two examples that pass *vacuously* on MSX1 and must not be added.
 
 `run_example.sh` links only the modules you name (from `lib/ext/` or `lib/gen/`), so each
-example is a minimal, honest reproduction of what the documentation claims. `run_all.sh` finishes by
+example is a minimal, honest reproduction of what the documentation claims.
+
+`assets/` holds binary files some examples use (the MoonBlaster example song + sample kit,
+by C.v/d Geest, included with permission); the checked-in `moonblaster_song.h` /
+`moonblaster_kit.h` arrays are generated from them by `tools/mb14blob.sh`. `run_all.sh` finishes by
 running `verify_docs.sh`, which fails if any executable line drifts from its documentation page.
 
 ## `crt_init.c` — why it exists

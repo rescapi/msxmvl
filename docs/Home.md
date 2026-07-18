@@ -46,6 +46,7 @@ where most libraries stop and hand you the bare hardware.
 | [Sound (SCC)](Sound-SCC.md) | `scc` | Konami's wavetable chip: 5 channels, you design the waveform |
 | [Sound (MSX-MUSIC)](Sound-MSX-Music.md) | `msx-music` | FM synthesis with 15 ready-made instruments (FM-PAC) |
 | [Sound (MSX-AUDIO)](Sound-MSX-Audio.md) | `msx-audio` | the Y8950 — full FM control **and ADPCM sample playback** |
+| [Sound (MoonBlaster)](Sound-MoonBlaster.md) | `moonblaster` | play MoonBlaster 1.4 songs — the original replayer, **interrupt-time-optimised** |
 
 ## Input
 
