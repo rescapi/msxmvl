@@ -103,6 +103,15 @@ u8 Disk_WriteSectors(u16 sector, u8 count, const void* buffer)
 static u8 DiskDOS_Transfer(void) __naked
 {
 	__asm
+		; RDABS/WRABS (0x2F/0x30) do real disk I/O and CLOBBER IX/IY across the
+		; call -- the same trap the 0x1B guard in dos.c documents, and the reason
+		; the PHYDIO path above pushes them too. Unguarded, a caller that holds a
+		; value in IX (e.g. an SDCC IX-frame local, as DiskOS_Load does) has it
+		; corrupted mid-transfer -> garbage sector/count -> crash. Guard the whole
+		; sequence (SETDTA is harmless inside the guard).
+		push ix
+		push iy
+
 		ld   hl, (_s_Buffer)
 		ex   de, hl
 		ld   c, #0x1A           ; SETDTA -- the transfer address is a DOS global,
@@ -121,6 +130,8 @@ static u8 DiskDOS_Transfer(void) __naked
 		ld   c, #0x30           ; WRABS
 	1$:
 		call 0x0005
+		pop  iy
+		pop  ix                 ; POP does not affect the A error code from BDOS
 		ret                     ; A = error code (0 = success)
 	__endasm;
 }

@@ -6,7 +6,8 @@ bash + the SDCC toolchain (`sdldz80`, `sdasz80`, `sdobjcopy`) + coreutils. **No 
 Three modes:
 
 ```sh
-bankpack.sh --gen   <manifest> [outdir]             # generate far.h + far thunks
+bankpack.sh --gen   <manifest> [outdir] [rom_kb]    # generate far.h + far thunks (rom_kb only
+                                                    # affects the SRAM_SELECT constant; default 64)
 bankpack.sh         <manifest> <out.rom> [rom_kb]   # link banks + assemble the ROM (rom_kb=64)
 bankpack.sh --build <manifest> <out.rom> [rom_kb]   # ONE command: gen + compile + build
 ```
@@ -117,6 +118,7 @@ RAMBASE 0xC000          # statics RAM base (default 0xC000)
 RESERVE 0xC800 0xC880   # program-owned RAM [lo,hi): build FAILS on collision
 SHADOW  0xE020          # memseg shadow byte (env BANKPACK_SHADOW overrides)
 MAPPER  ASCII16         # cartridge mapper (default ASCII8)
+SRAM    8               # battery-backed SRAM chip on the cartridge (see below)
 ```
 
 ### Mappers
@@ -139,6 +141,38 @@ at `0x4000` is hardware-wired to segment 0 — no select register exists for it.
 Boot with the listed `-romtype` — always pass it explicitly, openMSX's
 auto-detection guesses on homebrew images; the build's final report line prints
 the right one.
+
+### SRAM on the cartridge (mapper-SRAM saves)
+
+```
+SRAM <kb> [select]      # requires MAPPER ASCII8 (2/8/32 KB) or ASCII16 (2/8 KB)
+```
+
+Declares a battery-backed SRAM chip wired into the mapper — the Hydlide 2 / Koei /
+A-Train cartridge format, i.e. **game saves for a bankpack ROM** (user docs:
+`docs/Game-Saves.md`). The SRAM is an extra segment behind the normal bank-select
+register: writing a value with the **SRAM bit** set maps the chip instead of ROM into
+the `0x8000` window. That bit is `rom_kb/8` on ASCII8 (the first bit above the ROM's
+bank numbers; the optional `[select]` overrides it for Wizardry-style fixed wiring)
+and exactly `0x10` on ASCII16.
+
+`--gen` emits four constants into **`far.h`** (chosen over a separate header so the
+sources a bank build already includes carry them — nothing new to wire up):
+`SRAM_SELECT`, `SRAM_SIZE`, `SRAM_SHADOW`, `SRAM_BANKREG`. They feed
+`lib/ext/sram.c` compiled with `-DSRAM_BACKEND_MAPPER` (`--build` adds that define to
+its compiles automatically when the manifest has an `SRAM` line); link it into the
+**resident** bank and call `Sram_Read`/`Sram_Write`/`Sram_Verify` — each call brackets
+one `ldir` with di / save-segment-from-SHADOW / select SRAM / restore / ei.
+
+The `.rom` image itself is **unchanged** (SRAM is a chip on the cart, not file
+content); boot with the matching openMSX `-romtype` — `ASCII8SRAM2/8/32`,
+`ASCII16SRAM2/8` — which the build's final report line prints. Hard build errors:
+`SRAM` on a Konami mapper, a size the wiring doesn't come in, a **select value that
+collides with a code segment number** (that segment's far thunk would map SRAM, not
+code — e.g. SEG 16 in an ASCII16+SRAM image), and a stale `far.h` `SRAM_SELECT` from
+a `--gen` run with a different `rom_kb` (ASCII8 only; pass the same `rom_kb` to both
+steps). Worked example: `test/banksram/` — including battery persistence across a
+second boot via openMSX's SRAM file.
 
 ### Big ROMs
 

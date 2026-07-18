@@ -6,6 +6,10 @@ Every ROM program here boots through one of three flat, single-file startups —
 plus exactly the extra duty its size needs. When even 48 KB is not enough, the next step is
 [Code Banking](Code-Banking.md) — a MegaROM with paged banks.
 
+**Shipping formats: ROM or boot disk.** A cartridge ROM is one way to ship; the other is a
+**self-booting disk** — insert, power on, game runs, no MSX-DOS required. Same `.COM`-style
+`0x0100` payload, packed into a bootable FAT12 `.dsk`. See [Boot Disks](Boot-Disk.md).
+
 | Format | Address range | Extra duty at boot | Good for |
 |---|---|---|---|
 | 16 KB | `0x4000-0x7FFF` | none | most examples, small tools |

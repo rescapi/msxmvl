@@ -15,7 +15,10 @@ linked on its own, independent of the `gen/` modules.
 | `g3d`     | fixed-point 3D math: branchless signed 8×8 multiply, sin/cos |
 | `moonblaster` | MoonBlaster 1.4 song playback (.MBM + .MBK) — the original mbplay replayer, interrupt-time-optimised |
 | `isr` | IM 2 interrupt takeover — a plain C handler 164 T after the vector, BIOS bypassed |
+| `sram` | battery-backed game saves: PAC/FM-PAC cartridge (any slot) or your MegaROM's own mapper-SRAM chip (bankpack `SRAM` line); `lib/gen/pac.c` is a thin MSXgl-compatible layer over its PAC core |
 | `crt0_rom16/32/48` | flat single-file ROM startups (48 KB owns page 0 + the interrupt vector) |
+| `bootsector` / `crt0_bootdisk` | self-booting FAT12 disk: sector 0 loads a `0x0100` payload, no DOS ([Boot-Disk.md](../../docs/Boot-Disk.md)) |
+| `diskos` | mini-diskOS runtime — `DiskOS_Load(id, dst)` reads a blob off precomputed sectors, no FAT walk |
 
 ## Testing
 

@@ -68,6 +68,11 @@ EX_EXT=audio run "$H/msxaudio_01_reg.c" "msx-audio.c" a5 8
 EX_EXT=audio EX_DBG="Generic MSX-Audio RAM" EX_DBGOFS=0x1000 EX_DBGLEN=8 EX_DBGWANT=1122334455667788 \
   run "$H/msxaudio_02_adpcm.c" "msx-audio.c" a5 8
 
+# Game saves: the PAC is a CARTRIDGE (its own SRAM chip), and RDSLT/WRSLT are MSX1 BIOS
+# calls — verified PASSing on C-BIOS_MSX1 + the (ROM-free) openMSX pac extension.
+EX_EXT=pac run "$H/sram_01_pac.c" "sram.c" a5 8
+EX_EXT=pac EX_DEFS='-DAPPSIGN="MVZ8"' run "$H/pac_01_compat.c" "pac.c sram.c" a5 8
+
 # MSX-MUSIC: the FMPAC is a CARTRIDGE (its own OPLL + BIOS), so it works on an MSX1 just as on an
 # MSX2. Verified: msxmusic_01_note PASSes on C-BIOS_MSX1 + fmpac. Skipped on CI (the FMPAC BIOS
 # ROM is copyrighted); runs locally where the ROM is present.

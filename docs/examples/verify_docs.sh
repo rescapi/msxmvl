@@ -33,10 +33,14 @@ declare -A PAGE=(
  [crypt_01_roundtrip]=Encryption.md
  [clock_01_datetime]=Real-Time-Clock.md
  [clock_02_savedata]=Real-Time-Clock.md
+ [sram_01_pac]=Game-Saves.md
+ [pac_01_compat]=Game-Saves.md
  [dos_01_file]=MSX-DOS-2.md
  [dos_02_fcb]=MSX-DOS-1.md
  [disk_01_sector]=Disk-Sectors.md
  [disk_02_write]=Disk-Sectors.md
+ [bootdisk_01_sentinel]=Boot-Disk.md
+ [bootdisk_02_diskos]=Boot-Disk.md
  [scc_01_wave]=Sound-SCC.md
  [scc_02_detect]=Sound-SCC.md
  [msxmusic_01_note]=Sound-MSX-Music.md
@@ -55,7 +59,7 @@ for ex in "${!PAGE[@]}"; do
     key=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     [ -z "$key" ] && continue
     grep -Fq "$key" "$page" || { echo "  DRIFT [$ex -> ${PAGE[$ex]}]: $key"; miss=1; }
-  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_|ISR_)[A-Za-z_]*\(' | grep -vE '^\s*//')
+  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|DiskOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_|ISR_|Sram_|PAC_)[A-Za-z_]*\(' | grep -vE '^\s*//')
   [ $miss -ne 0 ] && fail=1
 done
 [ $fail -eq 0 ] && echo "documentation drift check: OK (all example code matches its page)" || { echo "documentation drift check: FAILED"; exit 1; }
