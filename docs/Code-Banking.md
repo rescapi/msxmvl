@@ -109,6 +109,47 @@ address and patches each function's real address into the table.
   window. Forgetting the `far_` prefix (calling `play_level()` instead of `far_play_level()`) is
   caught at link time as an undefined symbol, not as a crash.
 
+## Statics in banked code — the data model
+
+Banked C is not restricted to pure functions: a bank can have ordinary **writable statics**,
+both initialized and zeroed, and they behave exactly as C promises:
+
+```c
+// bankA.c  (lives in ROM bank 5)
+static u16 a_magic = 0xA55A;   // initialized: farrt must copy this bank's DATA slice
+static u8  a_bss[16];          // BSS: farrt must zero it
+```
+
+Two things make that work, both automatic:
+
+- **bankpack lays every bank's statics out in disjoint RAM.** The resident's `_DATA` links at
+  `RAMBASE` (default `0xC000`); each bank then links with an explicit data base in the next free
+  slice, so resident and bank statics can never overlap each other. The build prints the layout:
+
+  ```
+  bankpack: statics: resident  [0xc000,0xc00a)
+  bankpack: statics: seg 5     [0xc00a,0xc01e)
+  bankpack: statics: seg 6     [0xc01e,0xc032)
+  ```
+
+- **farrt runs the crt0 contract before `main`,** driven by a table bankpack patches into the
+  ROM: zero the whole statics region, copy the resident's initial values, then **map each bank
+  into the window and copy its initializer slice** ROM → RAM.
+
+If your program owns RAM directly (`__at` buffers, a dynamic-memory arena), declare it in the
+manifest and the build **fails on collision** instead of silently corrupting it:
+
+```
+RAMBASE 0xC000
+RESERVE 0xC800 0xC880
+```
+
+The memseg shadow byte can be moved the same way (`SHADOW 0xE0F0`, or env `BANKPACK_SHADOW`)
+— the value is injected into `farrt.asm` and the generated thunks at link time, so there is a
+single source of truth. The complete tested program for all of this is **`test/bankdata/`**:
+resident + two banks, each with initialized statics and BSS, asserted on C-BIOS_MSX1 *and*
+C-BIOS_MSX2, plus a deliberate `RESERVE` collision asserted to fail the build.
+
 ## One rule for far functions
 
 The call thunk keeps your registers safe by passing arguments in registers, so far-callable
@@ -127,7 +168,8 @@ inner loop (something called thousands of times per frame) resident, or inside a
 - A complete, tested banking ROM is in the source tree at **`test/farturnkey/`** — the snippets
   above are that program (it builds `game.rom` and asserts `play_level(3) == 350` on emulated
   hardware). `test/bank2`, `test/bankcall`, and `test/bankperf` are progressively richer examples
-  (assembly → C → cost measurement).
+  (assembly → C → cost measurement), and **`test/bankdata/`** is the statics data-model
+  acceptance test (the snippets in the statics section are that program).
 - `tools/README.bankpack.md` — the manifest format and toolchain details.
 
 ## See also

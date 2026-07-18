@@ -44,6 +44,38 @@ Whitespace-separated; `#` comments and blank lines ignored.
 The **first line is the resident bank**: linked first, and the only bank that may
 be referenced by name from the others.
 
+Data-model keywords (all optional):
+
+```
+RAMBASE 0xC000          # statics RAM base (default 0xC000)
+RESERVE 0xC800 0xC880   # program-owned RAM [lo,hi): build FAILS on collision
+SHADOW  0xE020          # memseg shadow byte (env BANKPACK_SHADOW overrides)
+```
+
+### C-runtime data model (statics in banks)
+
+Every bank may have writable C statics — initialized data and BSS. bankpack makes
+the crt0 contract hold across banks (spec: `docs/Code-Banking-Data-Model.md`):
+
+1. The resident links its `_DATA`/`_INITIALIZED` at `RAMBASE`; each later bank
+   links with an explicit `-b _DATA` in the **next disjoint RAM slice** (the build
+   prints a `statics:` line per bank). A generated area-order module is linked
+   first in every bank so `_INITIALIZER` lands in the bank's ROM, after its code.
+2. bankpack **patches `_bp_datatab`** (in `farrt.asm`, capacity 32 entries) with
+   the BSS union `[RAMBASE,end)` and, per bank with initialized statics, its
+   in-window ROM source, RAM dest, and length.
+3. Before `_main`, farrt zeroes the union, copies the resident initializers, then
+   **maps each listed bank into the window and copies its slice** ROM → RAM.
+
+Guard rails, all hard build errors: a `RESERVE` region colliding with the layout
+(or with `SHADOW`); statics running into the system area (`0xF380`); a bank with
+initialized statics whose RUN is not the `0x8000` window (farrt copies through
+the bank-2 window); more banks with init data than the table holds.
+
+`SHADOW`/`ADDR_BANK2` are single-sourced in bankpack and injected into
+`farrt.asm` + the generated thunks at **link time** (`-g`), so the .asm files
+cannot drift from the build. Worked example: `test/bankdata/`.
+
 ### FARTAB directive (bank→bank calls)
 
 ```
@@ -130,7 +162,16 @@ ride in `A`) and more than ~3 args (they spill to the stack). Use `u16`.
 - **The `.map` truncates symbol names at 9 chars** — bankpack reads symbols from the
   full-name NoICE `.noi` (`sdld -j`).
 - **`sdld -g sym=expr`** injects a symbol; injecting an *unreferenced* one errors,
-  so only each bank's actual `Ref` externals are injected.
+  so only each bank's actual `Ref` externals are injected (same for `SHADOW`/
+  `ADDR_BANK2`: only links that reference them get the `-g`).
+- **`sdld -b _AREA=addr` for an area no input declares** also errors — the
+  `_DATA` base is passed only when a module in the link declares `_DATA` (pure-asm
+  residents don't).
+- **Area order in a crt0-less link** follows the first module's declaration order,
+  which parks `_INITIALIZER` in RAM — the generated `_bp_bankorder.rel` is linked
+  first in every bank to pin the crt0 order instead.
+- **On Windows, sdld writes CRLF `.noi`/`.map`** — the address arithmetic here
+  would abort on the trailing `\r`. bankpack strips CR after every link.
 - The `jp (ix)` helper is kept **inside** the generated thunk module (a cross-module
   reference to it from the runtime hit an sdld resolution quirk).
 
@@ -139,9 +180,11 @@ ride in `A`) and more than ~3 args (they spill to the stack). Use `u16`.
 - `test/bank2/`      — asm banks; window switch + bank→resident call.
 - `test/bankcall/`   — C banks; nested bank→bank call via a hand-written table.
 - `test/farturnkey/` — **all C + manifest**; thunks/table/header generated.
+- `test/bankdata/`   — **statics in every bank** (init data + BSS + `RESERVE`),
+  asserted on C-BIOS_MSX1 and C-BIOS_MSX2.
 
 ## Not yet handled (roadmap)
 
 - ASCII-16 / other segment sizes (currently 8 KB fixed).
-- Unify the runtime shadow with `lib/ext/memseg` (farrt uses its own shadow byte).
-- ENASLT-based slot selection for expanded slots (farrt uses the port-0xA8 path).
+- Unify the runtime shadow with `lib/ext/memseg` (farrt uses its own shadow byte,
+  though its address is now the manifest's `SHADOW`).
