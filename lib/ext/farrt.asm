@@ -18,8 +18,11 @@
 ;; ENASLT mismapped the secondary slot, and full validation needs a real-BIOS
 ;; machine. See far-memory-banking notes.
 
-	ADDR_BANK2 = 0x7000
-	SHADOW     = 0xE020
+	;; SHADOW / ADDR_BANK2 are DEFINED AT LINK TIME by bankpack.sh (-g), the
+	;; single source of truth -- this file and the generated thunks cannot drift.
+	.globl SHADOW		; RAM byte: current segment in the page-2 window
+	.globl ADDR_BANK2	; ASCII-8 bank-2 select
+
 	HOME       = 0
 
 	ENASLT = 0x0024		; BIOS: enable slot (A=ExxxSSPP) at page (H bits 7:6)
@@ -28,6 +31,25 @@
 
 	.globl _main		; user entry (C)
 	.globl _mark_end	; harness breakpoint
+
+	;; Linker area bounds for the RESIDENT initialized statics (crt0 contract).
+	.globl s__INITIALIZER, l__INITIALIZER, s__INITIALIZED
+
+	;; Area order (same trick as crt0_rom16.asm): the linker lays areas out in
+	;; the order it first sees them, so this block is what puts _INITIALIZER in
+	;; ROM right after the code while _DATA/_INITIALIZED sit in RAM at the
+	;; bankpack-coordinated base.
+	.area _HOME
+	.area _CODE
+	.area _INITIALIZER	; <- ROM: the initial values
+	.area _GSINIT
+	.area _GSFINAL
+	.area _DATA		; <- RAM (bankpack -b _DATA)
+	.area _INITIALIZED	; <- RAM: where the values are copied to
+	.area _BSEG
+	.area _BSS
+	.area _HEAP
+
 	.area _CODE
 
 _start:
@@ -84,6 +106,85 @@ slot_ready:
 	ld (SHADOW),a
 	ld (ADDR_BANK2),a
 
+	;; ------------------------------------------------------------------
+	;; C-runtime globals-init (the crt0 contract, banked edition). Driven by
+	;; _bp_datatab below, which bankpack PATCHES into the ROM image after it
+	;; has laid every bank's statics out in disjoint RAM slices.
+	;; 1. zero the whole statics region (BSS union [lo,hi))
+	ld hl,(_bp_datatab)	; lo
+	ex de,hl
+	ld hl,(_bp_datatab+2)	; hi
+	or a
+	sbc hl,de		; hl = length (0 -> nothing to zero)
+	jr z, gi_nobss
+	ld c,l
+	ld b,h			; bc = length
+	ex de,hl		; hl = lo
+	ld (hl),#0
+	ld d,h
+	ld e,l
+	inc de
+	dec bc
+	ld a,b
+	or c
+	jr z, gi_nobss
+	ldir
+gi_nobss:
+
+	;; 2. resident initialized statics: plain crt0 copy (ROM always visible)
+	ld bc,#l__INITIALIZER
+	ld a,b
+	or c
+	jr z, gi_nores
+	ld de,#s__INITIALIZED
+	ld hl,#s__INITIALIZER
+	ldir
+gi_nores:
+
+	;; 3. each bank's initialized statics: map the bank into the page-2
+	;; window, copy its _INITIALIZER slice ROM->RAM, then restore HOME.
+	;; (No far calls can be in flight during INIT, so bare switching is safe;
+	;; SHADOW is kept in sync anyway, per the memseg discipline.)
+	ld a,(_bp_datatab+4)	; entry count
+	or a
+	jr z, gi_done
+	ld b,a
+	ld ix,#_bp_datatab+5
+gi_bank:
+	ld a, 0 (ix)		; segment
+	ld (SHADOW),a
+	ld (ADDR_BANK2),a
+	push bc
+	ld l, 1 (ix)		; src: bank's _INITIALIZER (in the window)
+	ld h, 2 (ix)
+	ld e, 3 (ix)		; dest: bank's _INITIALIZED (RAM slice)
+	ld d, 4 (ix)
+	ld c, 5 (ix)		; length
+	ld b, 6 (ix)
+	ldir
+	pop bc
+	ld de,#7
+	add ix,de
+	djnz gi_bank
+	ld a,#HOME		; back to the home segment
+	ld (SHADOW),a
+	ld (ADDR_BANK2),a
+gi_done:
+
 	call _main		; run the program; results left in RAM
 _mark_end:
 	jr _mark_end		; spin so the harness can read RAM
+
+	;; ------------------------------------------------------------------
+	;; Statics-init table, PATCHED by bankpack (like the far dispatch table):
+	;;   .dw lo, hi            BSS union [lo,hi) to zero (lo==hi: none)
+	;;   .db N                 entry count
+	;;   N x { .db seg | .dw src | .dw dest | .dw len }
+	;; Unpatched (linked without bankpack) it is all zeros: every step above
+	;; degrades to a no-op except the resident copy, which needs no table.
+	.globl _bp_datatab
+_bp_datatab:
+	.dw 0			; BSS union lo
+	.dw 0			; BSS union hi
+	.db 0			; entry count
+	.ds 224			; 32 entries x 7 bytes
