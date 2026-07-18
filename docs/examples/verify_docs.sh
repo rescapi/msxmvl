@@ -43,6 +43,9 @@ declare -A PAGE=(
  [msxaudio_01_reg]=Sound-MSX-Audio.md
  [msxaudio_02_adpcm]=Sound-MSX-Audio.md
  [moonblaster_01_play]=Sound-MoonBlaster.md
+ [rom32_01_bigrom]=ROM-Formats.md
+ [rom48_01_page0]=ROM-Formats.md
+ [isr_01_im2]=Interrupts.md
 )
 fail=0
 for ex in "${!PAGE[@]}"; do
@@ -52,7 +55,7 @@ for ex in "${!PAGE[@]}"; do
     key=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     [ -z "$key" ] && continue
     grep -Fq "$key" "$page" || { echo "  DRIFT [$ex -> ${PAGE[$ex]}]: $key"; miss=1; }
-  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_)[A-Za-z_]*\(' | grep -vE '^\s*//')
+  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_|ISR_)[A-Za-z_]*\(' | grep -vE '^\s*//')
   [ $miss -ne 0 ] && fail=1
 done
 [ $fail -eq 0 ] && echo "documentation drift check: OK (all example code matches its page)" || { echo "documentation drift check: FAILED"; exit 1; }

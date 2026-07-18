@@ -14,6 +14,8 @@ linked on its own, independent of the `gen/` modules.
 | `vsync`   | `VDP_WaitVBlank()` — interrupt-safe vertical-blank sync primitive |
 | `g3d`     | fixed-point 3D math: branchless signed 8×8 multiply, sin/cos |
 | `moonblaster` | MoonBlaster 1.4 song playback (.MBM + .MBK) — the original mbplay replayer, interrupt-time-optimised |
+| `isr` | IM 2 interrupt takeover — a plain C handler 164 T after the vector, BIOS bypassed |
+| `crt0_rom16/32/48` | flat single-file ROM startups (48 KB owns page 0 + the interrupt vector) |
 
 ## Testing
 

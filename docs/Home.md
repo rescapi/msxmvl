@@ -84,6 +84,8 @@ sector access, which needs no file system at all.
 | [State Machines](State-Machines.md) | `fsm` | title → play → game-over, with enter/tick/leave callbacks |
 | [Mutexes](Mutexes.md) | `mutex` | 8 locks in one byte — keep the interrupt handler off the VDP |
 | [VBlank Sync](VBlank-Sync.md) | `vsync` | wait for the screen refresh; the heartbeat of every game loop |
+| [Interrupts](Interrupts.md) | `isr` | IM 2 takeover: your C handler runs **164 T** after the interrupt — no BIOS in the loop |
+| [ROM Formats](ROM-Formats.md) | `crt0_rom*` | 16 / 32 / 48 KB cartridges — one flag picks the startup |
 
 ## System
 

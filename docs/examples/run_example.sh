@@ -13,9 +13,19 @@
 set -uo pipefail
 export SDL_VIDEODRIVER=dummy
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"   # repo root (portable; was hardcoded)
-# Our own crt0 (lib/ext/crt0_rom16.asm) + SDCC's makebin. No vendored SDK, no z88dk:
+# Our own crt0 (lib/ext/crt0_rom*.asm) + SDCC's makebin. No vendored SDK, no z88dk:
 # `apt install sdcc openmsx` is the whole toolchain.
-CRT0SRC=$ROOT/lib/ext/crt0_rom16.asm
+# EX_ROM=16 (default) | 32 | 48 selects the cartridge size and its matching crt0.
+# 48 KB images start at 0x0000 (page 0 is cart ROM too — see crt0_rom48.asm).
+EX_ROM="${EX_ROM:-16}"
+case "$EX_ROM" in
+  16) MBSIZE=32768; DDSKIP=1; DDCOUNT=1; ROMTOP=0x8000; ROMTYPE="" ;;
+  32) MBSIZE=49152; DDSKIP=1; DDCOUNT=2; ROMTOP=0xC000; ROMTYPE="" ;;
+  # a 48 KB image starts at page 0 — tell the emulator explicitly, or it guesses
+  48) MBSIZE=49152; DDSKIP=0; DDCOUNT=3; ROMTOP=0xC000; ROMTYPE="-romtype page012" ;;
+  *)  echo "EX_ROM must be 16, 32 or 48"; exit 2 ;;
+esac
+CRT0SRC=$ROOT/lib/ext/crt0_rom${EX_ROM}.asm
 OMX="${OPENMSX:-$(command -v openmsx || echo /home/remco/tools/openmsx/bin/openmsx)}"
 EX="$1"; MODS="${2:-}"; WANT="${3:-a5}"; LEN="${4:-8}"
 
@@ -67,13 +77,13 @@ cp "$CRT0SRC" "$W/crt0.asm"
        crt0.rel ex.rel $RELS 2>>build.log || { echo "LINK FAIL"; cat build.log; exit 1; }
 
   IS=$(awk '$2=="s__INITIALIZER"{print $1}' out.map); IL=$(awk '$2=="l__INITIALIZER"{print $1}' out.map)
-  [ "$((0x$IS))" -ge $((0x4000)) ] && [ "$((0x$IS + 0x$IL))" -le $((0x8000)) ] \
+  [ "$((0x$IS))" -ge $((0x4000)) ] && [ "$((0x$IS + 0x$IL))" -le $((ROMTOP)) ] \
     || { echo "INIT PLACEMENT FAIL (_INITIALIZER at 0x$IS, not in ROM)"; exit 1; }
 
-  # makebin (ships with SDCC) replaces z88dk's hex2bin: build 0x0000-0x7FFF, then
+  # makebin (ships with SDCC) replaces z88dk's hex2bin: build from 0x0000, then
   # drop the first 16 KB so the image starts at the cartridge's 0x4000.
-  makebin -s 32768 out.ihx full.bin 2>>build.log || { echo "MAKEBIN FAIL"; cat build.log; exit 1; }
-  dd if=full.bin of=out.rom bs=16384 skip=1 count=1 2>/dev/null
+  makebin -s $MBSIZE out.ihx full.bin 2>>build.log || { echo "MAKEBIN FAIL"; cat build.log; exit 1; }
+  dd if=full.bin of=out.rom bs=16384 skip=$DDSKIP count=$DDCOUNT 2>/dev/null
   ) || { echo "BUILD ERROR"; exit 2; }
 
 ROM="$W/out.rom"; MAP="$W/out.map"
@@ -109,7 +119,7 @@ cat > "$TCL" <<TCL
 set renderer none
 set throttle off
 after realtime 25 { puts stderr "OUT=TIMEOUT PC=[format %04x [reg PC]]"; exit 1 }
-carta $ROM
+carta $ROM $ROMTYPE
 $EXTLINE
 $KEYLINE
 proc dump {} {

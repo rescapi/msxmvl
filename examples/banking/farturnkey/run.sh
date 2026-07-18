@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# Turnkey banked-ROM build: the developer wrote only plain C + bank.manifest.
-# This runner shows the full turnkey flow and asserts the result on hardware.
-#
-#   1. bankpack --gen  -> far.h (call decls) + _bp_far_thunks.asm (thunks + table)
-#   2. compile C (banks + main) and assemble the runtime + generated thunks
-#   3. bankpack build  -> link each bank, patch the dispatch table, assemble ROM
-#   4. boot on C-BIOS_MSX2, assert play_level(3) == 350
+# Turnkey banked-ROM build: the developer wrote only plain C (far-callable
+# definitions marked FAR_FN) + bank.manifest. ONE bankpack command does the rest:
+# scan FAR_FN -> far.h + thunks, compile, link each bank, patch the tables,
+# assemble the ROM. Then boot on C-BIOS_MSX2 and assert play_level(3) == 350.
+# Also asserts the misuse guard: FAR_FN in a RESIDENT source fails the build.
 set -uo pipefail
 export SDL_VIDEODRIVER=dummy
 DIR=$(cd "$(dirname "$0")" && pwd)
@@ -14,25 +12,30 @@ OMX="${OPENMSX:-$(command -v openmsx || echo /home/remco/tools/openmsx/bin/openm
 BP="$ROOT/tools/bankpack.sh"
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 
-cp "$ROOT/lib/gen/types.h" "$W/"
-cp "$ROOT/lib/ext/farrt.asm" "$W/"
-cp "$DIR/main.c" "$DIR/bankA.c" "$DIR/bankB.c" "$DIR/bank.manifest" "$W/"
+# Stage the program (sources + manifest) in a scratch dir; the build runs there.
+# --build auto-locates farrt.asm by searching upward from the manifest -- no repo
+# above /tmp, so point BANKPACK_FARRT at it (types.h is staged for the same reason).
+cp "$ROOT/lib/gen/types.h" "$DIR/main.c" "$DIR/bankA.c" "$DIR/bankB.c" "$DIR/bank.manifest" "$W/"
 cd "$W"
+export BANKPACK_FARRT="$ROOT/lib/ext/farrt.asm"
 
-# 1. generate far.h + far thunks from the manifest's FAR lines
-bash "$BP" --gen bank.manifest . || { echo "GEN FAIL"; exit 1; }
+# 1. the whole build is ONE command
+bash "$BP" --build bank.manifest game.rom 64 || { echo "BUILD FAIL"; exit 2; }
 
-# 2. compile / assemble everything (far.h now available)
-sdasz80 -o farrt.rel farrt.asm                       || { echo "ASM farrt FAIL"; exit 1; }
-sdasz80 -o _bp_far_thunks.rel _bp_far_thunks.asm     || { echo "ASM thunks FAIL"; exit 1; }
-for c in main bankA bankB; do
-  sdcc -c -mz80 --sdcccall 1 -I. -o "$c.rel" "$c.c"  || { echo "CC $c FAIL"; exit 1; }
-done
+# 2. negative: FAR_FN in a RESIDENT source must be a clear build error
+cp main.c badmain.c
+printf '\nFAR_FN u16 oops(u16 x) { return x; }\n' >> badmain.c
+sed 's/main\.rel/badmain.rel/' bank.manifest > bank.bad.manifest
+if ERR=$(bash "$BP" --build bank.bad.manifest bad.rom 64 2>&1); then
+  echo "  FAR_FN-in-resident: FAIL (build was accepted)"; exit 1
+fi
+if echo "$ERR" | grep -q "resident functions need no FAR_FN"; then
+  echo "  FAR_FN-in-resident: PASS (build rejected with a clear message)"
+else
+  echo "  FAR_FN-in-resident: FAIL (wrong message: $ERR)"; exit 1
+fi
 
-# 3. build + patch the ROM
-bash "$BP" bank.manifest game.rom 64 || { echo "BANKPACK FAIL"; exit 2; }
-
-# 4. run
+# 3. run: boot, break at _mark_end, read the result bytes
 MEND=$(awk '$1=="DEF" && $2=="_mark_end"{print $3}' _bp_resident.noi)
 [ -n "$MEND" ] || { echo "no _mark_end"; exit 2; }
 echo "  _mark_end @ $MEND"

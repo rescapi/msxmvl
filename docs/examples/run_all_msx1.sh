@@ -78,6 +78,12 @@ else
     run "$H/msxmusic_01_note.c" "bios.c system.c msx-music.c" a5 8
 fi
 
+# ROM formats + interrupts — slot logic and IM 2 are generation-independent,
+# and these assert real content (checksums, page-0 bytes, handler-driven ticks)
+EX_ROM=32 run "$H/rom32_01_bigrom.c" "" a5 8
+EX_ROM=48 run "$H/rom48_01_page0.c" "" a5 8
+run "$H/isr_01_im2.c" "isr.c" a5 8
+
 echo
 [ $fail -eq 0 ] && echo "ALL MSX1 EXAMPLES PASS" || echo "SOME MSX1 EXAMPLES FAILED"
 exit $fail

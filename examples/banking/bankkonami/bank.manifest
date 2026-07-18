@@ -1,0 +1,11 @@
+# bankkonami: the turnkey banked program on a plain KONAMI (Konami4) cartridge
+# -- 8 KB segments, the 0x8000 window selected through the 0x8000 register
+# (inside the window; the mapper eats the write). 0x4000-0x5FFF is HARDWARE-
+# FIXED to segment 0 -- no select register exists -- which is exactly where
+# bankpack puts the resident, and what the resident-SEG-0 build check enforces.
+MAPPER KONAMI
+
+# SEG  RUN     OBJ
+  0    0x4000  farrt.rel main.rel      # resident: runtime + C main (+ generated thunks, auto)
+  5    0x8000  bankA.rel               # FAR_FN play_level (calls level_score)
+  6    0x8000  bankB.rel               # FAR_FN level_score (leaf)
