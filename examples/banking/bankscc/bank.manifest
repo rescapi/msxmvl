@@ -1,0 +1,10 @@
+# bankscc: the turnkey banked program on a KONAMI_SCC (Konami5) cartridge --
+# 8 KB segments, the 0x8000 window selected through the 0x9000 register. This
+# is the image format flash carts (Carnivore2, MegaFlashROM, Yamanooto) run
+# natively. Resident SEG 0 at 0x4000 is the mapper's reset state.
+MAPPER KONAMI_SCC
+
+# SEG  RUN     OBJ
+  0    0x4000  farrt.rel main.rel      # resident: runtime + C main (+ generated thunks, auto)
+  5    0x8000  bankA.rel               # FAR_FN play_level (calls level_score)
+  6    0x8000  bankB.rel               # FAR_FN level_score (leaf)

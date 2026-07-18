@@ -1,0 +1,10 @@
+# bankbig: 512 KB ASCII-8 MegaROM -- 64 segments, with far code AND writable
+# statics in SEG 63, the LAST segment of the image (file offset 0x7E000). The
+# 8-bit select register addresses it like any other segment; what this build
+# proves is the big-ROM file layout end-to-end.
+MAPPER ASCII8
+
+# SEG  RUN     OBJ
+  0    0x4000  farrt.rel main.rel      # resident: runtime + C main (+ generated thunks, auto)
+  5    0x8000  bankmid.rel             # a mid-image bank (FAR_FN mid_tag)
+  63   0x8000  bankz.rel               # the LAST segment: far code + statics

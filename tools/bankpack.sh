@@ -1,33 +1,47 @@
 #!/usr/bin/env bash
-# bankpack -- turnkey ASCII-8 / ASCII-16 MegaROM builder for banked code.
+# bankpack -- turnkey MegaROM builder for banked code (ASCII-8/16, Konami,
+# Konami-SCC mappers; images up to the mapper's 256-segment limit).
 #
-# Pure bash + SDCC toolchain + coreutils (no Python). Two modes:
+# Pure bash + SDCC toolchain + coreutils (no Python). Three modes:
 #
-#   bankpack.sh --gen <manifest> [outdir]      generate far.h + far thunks
-#   bankpack.sh <manifest> <out.rom> [rom_kb]  link banks + assemble the ROM
+#   bankpack.sh --gen   <manifest> [outdir]             generate far.h + far thunks
+#   bankpack.sh         <manifest> <out.rom> [rom_kb]   link banks + assemble the ROM
+#   bankpack.sh --build <manifest> <out.rom> [rom_kb]   ONE command: gen + compile +
+#                                                       assemble + link + ROM
 #
-# The developer writes plain C and a manifest. `--gen` emits, from the manifest's
-# FAR lines, a header of far-call declarations (callers just `#include "far.h"`
-# and call `far_<name>(...)`) and the resident thunks + dispatch table. The build
-# mode links each bank at its window address, patches the dispatch table with the
-# real function addresses, and assembles the 64 KB ROM.
+# The developer writes plain C and a manifest. A bank source marks a far-callable
+# DEFINITION with FAR_FN (e.g. `FAR_FN u16 play_level(u16 level) {...}`); the gen
+# step scans the bank sources for those (explicit FAR manifest lines also still
+# work) and emits a header of call declarations (callers just `#include "far.h"`
+# and call `play_level(...)` -- the old `far_<name>(...)` spelling remains as an
+# alias) plus the resident thunks + dispatch table. The build mode links each bank
+# at its window address, patches the dispatch table with the real function
+# addresses, and assembles the ROM (rom_kb, default 64). `--build` chains the whole pipeline:
+# gen, compile each OBJ's sibling .c/.asm, assemble farrt + thunks, then build.
 #
 # Manifest (whitespace; '#' comments; blank lines ignored):
 #   SEG   RUN      OBJ [OBJ ...]      one bank per line; first line = RESIDENT
 #   FAR   SEG      <C prototype>      declare a far-callable function in SEG
-#     e.g.  FAR 5 u16 farA(u16 x)
+#     e.g.  FAR 5 u16 farA(u16 x)    (optional -- a bank source can mark the
+#                                     definition itself with FAR_FN instead and
+#                                     skip the manifest line; see scan_far_fn)
 #   FARTAB base slot0 slot1 ...       (advanced/manual; auto-derived from FAR)
 #   RAMBASE <addr>                    statics RAM base (default 0xC000)
 #   RESERVE <lo> <hi>                 program-owned RAM [lo,hi) (e.g. __at data);
 #                                     build FAILS if the layout or SHADOW touches it
 #   SHADOW  <addr>                    memseg shadow byte (default 0xE020;
 #                                     env BANKPACK_SHADOW overrides)
-#   MAPPER  ASCII8|ASCII16            cartridge mapper (default ASCII8).
-#                                     ASCII16 = 16 KB segments, so a single bank
-#                                     may carry up to 16 KB of code+data. Both
-#                                     mappers select the 0x8000 window through
-#                                     the SAME register (0x7000), so farrt and
-#                                     the generated thunks are identical.
+#   MAPPER  ASCII8|ASCII16|KONAMI|KONAMI_SCC
+#                                     cartridge mapper (default ASCII8). Every
+#                                     supported mapper selects the 0x8000 window
+#                                     with ONE 8-bit register write, so farrt and
+#                                     the generated thunks are identical for all
+#                                     of them -- only the select register address,
+#                                     the segment size (ASCII16: 16 KB, the rest:
+#                                     8 KB) and per-mapper build checks differ
+#                                     (see the mapper table in parse_manifest).
+#                                     The final report line prints the matching
+#                                     openMSX -romtype.
 #
 # C-RUNTIME DATA MODEL (docs/Code-Banking-Data-Model.md): every bank may have
 # writable C statics. The resident links its _DATA/_INITIALIZED at RAMBASE; each
@@ -43,14 +57,13 @@
 # (they ride in A) and >~3 args (spill to the stack) -- use u16.
 set -uo pipefail
 
-ADDR_BANK2=0x7000        # page-2 window select -- same register on ASCII-8 (bank 2)
-                         # and ASCII-16 (bank 2), which is what makes MAPPER a
-                         # pure bankpack concern (link-time -g symbol, see below)
 WINDOW=0x8000            # page-2 window base: banked code runs here, resident below
 SYSTEM_RAM=0xF380        # BIOS work area: statics must stay below this
-DATATAB_MAX=32           # capacity of farrt.asm's _bp_datatab (entries)
-# SHADOW and ADDR_BANK2 are single-sourced HERE and injected into farrt.asm and
-# the generated thunks at LINK time (-g), so the .asm files cannot drift.
+DATATAB_MAX=32           # capacity of farrt.asm's _bp_datatab (entries); raising it
+                         # must grow _bp_datatab's .ds in farrt.asm in lock-step
+# SHADOW (below) and ADDR_BANK2 (per-mapper, set by parse_manifest's mapper
+# table) are single-sourced in THIS SCRIPT and injected into farrt.asm and the
+# generated thunks at LINK time (-g), so the .asm files cannot drift.
 
 die() { echo "bankpack: $*" >&2; exit 1; }
 
@@ -71,7 +84,7 @@ find_z80lib() {
 parse_manifest() {
   SEGS=(); RUNS=(); OBJS=(); FAR_SEG=(); FAR_NAME=(); FAR_PROTO=(); FARTAB=""
   RAMBASE=""; RESERVES=(); MSHADOW=""; MAPPER=""
-  local a b rest
+  local a b rest s
   while read -r a b rest; do
     [ -z "${a:-}" ] && continue
     case "$a" in \#*) continue;; esac
@@ -93,7 +106,7 @@ parse_manifest() {
         [ -n "$b" ] || die "SHADOW needs an address"
         MSHADOW="$b" ;;
       MAPPER)
-        [ -n "$b" ] || die "MAPPER needs a type (ASCII8 or ASCII16)"
+        [ -n "$b" ] || die "MAPPER needs a type (ASCII8, ASCII16, KONAMI, KONAMI_SCC)"
         MAPPER="$b" ;;
       *)
         [ -n "$b" ] && [ -n "$rest" ] || die "bad manifest line: $a $b $rest"
@@ -102,30 +115,96 @@ parse_manifest() {
   done < <(sed 's/#.*//' "$1")
   RAMBASE="${RAMBASE:-0xC000}"
   SHADOW="${BANKPACK_SHADOW:-${MSHADOW:-0xE020}}"
+  # Mapper table: the ONE register that selects the 0x8000 window (ADDR_BANK2,
+  # a link-time -g symbol; the 8-bit `ld (ADDR_BANK2),a` in farrt and the
+  # thunks serves every mapper here), the segment size, and the matching
+  # openMSX -romtype. The KONAMI/KONAMI_SCC select registers sit INSIDE the
+  # window: harmless -- the mapper eats the write, ROM reads are unaffected,
+  # and farrt/thunks only ever write it.
   case "${MAPPER:-ASCII8}" in
-    ASCII8)  SEGSIZE=8192 ;;
-    ASCII16) SEGSIZE=16384 ;;
-    *) die "unknown MAPPER '${MAPPER}' (supported: ASCII8, ASCII16)" ;;
+    ASCII8)     SEGSIZE=8192;  ADDR_BANK2=0x7000; ROMTYPE=ASCII8 ;;
+    ASCII16)    SEGSIZE=16384; ADDR_BANK2=0x7000; ROMTYPE=ASCII16 ;;
+    KONAMI)     SEGSIZE=8192;  ADDR_BANK2=0x8000; ROMTYPE=Konami ;;
+    KONAMI_SCC) SEGSIZE=8192;  ADDR_BANK2=0x9000; ROMTYPE=KonamiSCC ;;
+    *) die "unknown MAPPER '${MAPPER}' (supported: ASCII8, ASCII16, KONAMI, KONAMI_SCC)" ;;
   esac
+  # Mapper-wide manifest checks (here, not in the build step, so --gen fails
+  # just as early):
+  # - the RESIDENT must be SEG 0: every mapper's reset state maps segment 0 at
+  #   0x4000, and on KONAMI it is hardware-FIXED there (no register exists).
+  # - every SEG must fit the mappers' 8-bit select register.
+  # - KONAMI_SCC quirk: a select value whose low 6 bits are all 1 (0x3F, 0x7F,
+  #   0xBF, 0xFF) maps the SCC SOUND CHIP at 0x9800-0x9FFF instead of ROM -- a
+  #   thunk mapping such a segment would call into SCC registers, not code.
+  if [ "${#SEGS[@]}" -ge 1 ] && [ "$((SEGS[0]))" -ne 0 ]; then
+    die "resident bank must be SEG 0 (the mappers' reset state; hardware-fixed on KONAMI), got SEG ${SEGS[0]}"
+  fi
+  for s in "${SEGS[@]:-}"; do
+    [ -n "$s" ] || continue
+    [ "$((s))" -le 255 ] || die "SEG $s does not fit the mapper's 8-bit select register (max 255)"
+    if [ "${MAPPER:-ASCII8}" = "KONAMI_SCC" ] && [ $(( s & 0x3F )) -eq "$((0x3F))" ]; then
+      die "SEG $s would map the SCC sound chip, not ROM (on KONAMI_SCC a select value with the low 6 bits all 1 -- 0x3F/0x7F/0xBF/0xFF -- enables the SCC at 0x9800); move this code bank"
+    fi
+  done
 }
 
-# =====================================================================
-# --gen : emit far.h + _bp_far_thunks.asm from the FAR lines
-# =====================================================================
-if [ "${1:-}" = "--gen" ]; then
-  MANIFEST="${2:?usage: bankpack.sh --gen <manifest> [outdir]}"
-  OUTDIR="${3:-.}"
-  parse_manifest "$MANIFEST"
-  [ "${#FAR_NAME[@]}" -ge 1 ] || die "--gen: manifest has no FAR lines"
+# ---- FAR_FN scan: derive FAR entries from annotated bank sources ----
+# A bank .c file may mark a far-callable DEFINITION on one line:
+#     FAR_FN u16 play_level(u16 level) { ... }
+# far.h #defines FAR_FN to nothing, so the annotation costs the compiler
+# nothing -- this scan is what reads it. Pure text, no compile step (same style
+# as the FAR prototype parsing): for every OBJ of every bank, map <name>.rel to
+# <name>.c NEXT TO THE MANIFEST; lines whose FIRST token is FAR_FN contribute a
+# far entry -- prototype = the rest of the line up to '{' (so the full prototype
+# must sit on the FAR_FN line), owning SEG = the bank whose OBJ list named the
+# .rel. Explicit FAR lines keep working and are appended first (parse order), so
+# --gen and the build derive the SAME slot order. The same function arriving via
+# both routes (or twice) is an error; FAR_FN in a RESIDENT source is an error
+# (resident code is always mapped -- it needs no thunk).
+scan_far_fn() {  # <manifest>
+  local mdir; mdir=$(dirname "$1")
+  local i obj src line proto name j
+  for i in "${!SEGS[@]}"; do
+    for obj in ${OBJS[$i]}; do
+      case "$obj" in *.rel) src="$mdir/${obj%.rel}.c" ;; *) continue ;; esac
+      [ -f "$src" ] || continue
+      while IFS= read -r line; do
+        proto=$(printf '%s' "$line" | sed -e 's/^[[:space:]]*FAR_FN[[:space:]]*//' -e 's/{.*//' -e 's/[[:space:]]*$//')
+        case "$proto" in
+          *\(*\)*) ;;
+          *) die "FAR_FN needs the full prototype on one line: $src: $line" ;;
+        esac
+        name=$(printf '%s' "$proto" | sed 's/(.*//' | awk '{print $NF}')
+        [ -n "$name" ] || die "cannot parse function name from FAR_FN line: $src: $line"
+        [ "$i" -ne 0 ] || die "FAR_FN on '$name' in resident source $src -- resident functions need no FAR_FN"
+        for j in "${!FAR_NAME[@]}"; do
+          [ "${FAR_NAME[$j]}" != "$name" ] \
+            || die "far function '$name' declared twice (FAR_FN in $src duplicates an earlier FAR/FAR_FN entry)"
+        done
+        FAR_SEG+=("${SEGS[$i]}"); FAR_NAME+=("$name"); FAR_PROTO+=("$proto")
+      done < <(awk '$1=="FAR_FN"' "$src")
+    done
+  done
+}
 
-  H="$OUTDIR/far.h"; T="$OUTDIR/_bp_far_thunks.asm"
+# ---- shared emitter: far.h + _bp_far_thunks.asm from the FAR entries ----
+emit_far_files() {  # <outdir>
+  local outdir="$1" H T i n seg slot
+  H="$outdir/far.h"; T="$outdir/_bp_far_thunks.asm"
   {
     echo "// generated by 'bankpack --gen' -- do not edit"
     echo "#ifndef BANKPACK_FAR_H"
     echo "#define BANKPACK_FAR_H"
     echo '#include "types.h"'
+    echo "// FAR_FN marks a far-callable DEFINITION in a bank source. It expands to"
+    echo "// nothing: bankpack's text scan reads the annotation, the compiler never does."
+    echo "#define FAR_FN"
+    echo "// One pair per far function: the natural name (the thunk carries the"
+    echo "// function's own name, so callers just write name(...)) and the far_"
+    echo "// spelling (alias label at the same address, for existing callers)."
     for i in "${!FAR_NAME[@]}"; do
-      # prefix the function name with far_ in its prototype
+      printf 'extern %s;\n' "${FAR_PROTO[$i]}"
+      # the same prototype with the function name prefixed far_
       printf 'extern %s;\n' \
         "$(printf '%s' "${FAR_PROTO[$i]}" | sed 's/\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*(/far_\1(/')"
     done
@@ -136,10 +215,17 @@ if [ "${1:-}" = "--gen" ]; then
     echo ";; generated by 'bankpack --gen' -- do not edit"
     echo ";; SHADOW / ADDR_BANK2 are defined at link time by bankpack (-g), so the"
     echo ";; values cannot drift between this file, farrt.asm and the build."
+    echo ";;"
+    echo ";; Each thunk is named after the far function ITSELF (callers write"
+    echo ";; play_level(3)); _far_<name> is a zero-cost alias label at the same"
+    echo ";; address so pre-existing far_ callers keep linking. The natural name"
+    echo ";; cannot collide with the bank's own definition because banks link"
+    echo ";; SEPARATELY -- and the build reads each target's address from the"
+    echo ";; owning bank's .noi only, never from a merged symbol map."
     echo "	.globl ADDR_BANK2"
     echo "	.globl SHADOW"
     echo "	.globl _fartab"
-    for n in "${FAR_NAME[@]}"; do echo "	.globl _far_$n"; done
+    for n in "${FAR_NAME[@]}"; do echo "	.globl _$n"; echo "	.globl _far_$n"; done
     echo "	.area _CODE"
     # self-contained JP-(IX) helper (kept in this module to avoid sdld's
     # 'definition must follow reference' cross-module ordering quirk)
@@ -148,6 +234,7 @@ if [ "${1:-}" = "--gen" ]; then
     for i in "${!FAR_NAME[@]}"; do
       n="${FAR_NAME[$i]}"; seg="${FAR_SEG[$i]}"; slot=$(( i * 2 ))
       cat <<ASM
+_$n:
 _far_$n:
 	push ix
 	ld a,(SHADOW)
@@ -165,31 +252,99 @@ _far_$n:
 ASM
     done
     echo "_fartab:"
-    for n in "${FAR_NAME[@]}"; do echo "	.dw 0	; -> _$n"; done
+    for n in "${FAR_NAME[@]}"; do echo "	.dw 0	; -> _$n (in its owning bank)"; done
   } > "$T"
 
-  echo "bankpack --gen: wrote $H and $T (${#FAR_NAME[@]} far function(s))"
+  echo "bankpack: gen: wrote $H and $T (${#FAR_NAME[@]} far function(s))"
+}
+
+# =====================================================================
+# --gen : emit far.h + _bp_far_thunks.asm (FAR lines + FAR_FN scan)
+# =====================================================================
+if [ "${1:-}" = "--gen" ]; then
+  MANIFEST="${2:?usage: bankpack.sh --gen <manifest> [outdir]}"
+  OUTDIR="${3:-.}"
+  parse_manifest "$MANIFEST"
+  scan_far_fn "$MANIFEST"
+  [ "${#FAR_NAME[@]}" -ge 1 ] || die "--gen: manifest has no FAR lines and no FAR_FN-annotated sources"
+  emit_far_files "$OUTDIR"
   exit 0
 fi
 
 # =====================================================================
-# build : link banks + assemble ROM
+# build / --build : link banks + assemble ROM (--build compiles first)
 # =====================================================================
-MANIFEST="${1:?usage: bankpack.sh <manifest> <out.rom> [rom_kb]}"
-OUT="${2:?usage: bankpack.sh <manifest> <out.rom> [rom_kb]}"
+BUILD_ALL=0
+if [ "${1:-}" = "--build" ]; then BUILD_ALL=1; shift; fi
+MANIFEST="${1:?usage: bankpack.sh [--build] <manifest> <out.rom> [rom_kb]}"
+OUT="${2:?usage: bankpack.sh [--build] <manifest> <out.rom> [rom_kb]}"
 ROM_KB="${3:-64}"
 parse_manifest "$MANIFEST"
+scan_far_fn "$MANIFEST"
 [ "${#SEGS[@]}" -ge 1 ] || die "manifest has no banks"
 
-# If FAR lines exist, the generated thunks belong in the resident bank, and the
-# dispatch table is auto-derived (base _fartab, slots _<name> in FAR order).
-if [ "${#FAR_NAME[@]}" -ge 1 ]; then
-  [ -f _bp_far_thunks.rel ] || die "run 'bankpack --gen' + assemble _bp_far_thunks.asm first"
-  OBJS[0]="${OBJS[0]} _bp_far_thunks.rel"
-  if [ -z "$FARTAB" ]; then
-    FARTAB="_fartab"
-    for n in "${FAR_NAME[@]}"; do FARTAB="$FARTAB _$n"; done
+# ROM geometry checks (mapper-agnostic, need ROM_KB so they live here, not in
+# parse_manifest): the image must be a whole number of segments, and every SEG
+# must land INSIDE it -- place() writes with `dd seek`, which would otherwise
+# silently GROW the file past ROM_KB into an image no loader accepts.
+[ $(( ROM_KB * 1024 % SEGSIZE )) -eq 0 ] \
+  || die "ROM size $ROM_KB KB is not a multiple of the ${MAPPER:-ASCII8} segment size ($((SEGSIZE / 1024)) KB)"
+NSEG=$(( ROM_KB * 1024 / SEGSIZE ))
+for s in "${SEGS[@]}"; do
+  [ "$((s))" -lt "$NSEG" ] \
+    || die "SEG $s is beyond ROM size ($ROM_KB KB ${MAPPER:-ASCII8} has segments 0..$((NSEG - 1)))"
+done
+
+# ---- --build prelude: generate + compile everything the manifest names ----
+# Outputs (.rel and all _bp_* intermediates) land in the CURRENT directory, like
+# the plain build mode; sources are found next to the manifest.
+if [ "$BUILD_ALL" -eq 1 ]; then
+  MDIR=$(cd "$(dirname "$MANIFEST")" && pwd)
+  # Repo root for farrt.asm and the lib/gen headers: upward search from the
+  # manifest's directory (the same idiom the test runners use). Building outside
+  # the repo (e.g. a /tmp scratch dir)? Point BANKPACK_FARRT at farrt.asm and
+  # keep types.h next to the sources.
+  BROOT="$MDIR"; while [ ! -f "$BROOT/lib/ext/farrt.asm" ] && [ "$BROOT" != / ]; do BROOT=$(dirname "$BROOT"); done
+  CCINC=( -I. -I"$MDIR" )
+  [ -f "$BROOT/lib/gen/types.h" ] && CCINC+=( -I"$BROOT/lib/gen" )
+
+  if [ "${#FAR_NAME[@]}" -ge 1 ]; then
+    # far.h must sit NEXT TO the sources: a quoted #include "far.h" resolves
+    # relative to the including file, wherever the build directory is.
+    emit_far_files "$MDIR"
+    sdasz80 -o _bp_far_thunks.rel "$MDIR/_bp_far_thunks.asm" || die "--build: assembling far thunks failed"
   fi
+
+  for i in "${!SEGS[@]}"; do
+    for obj in ${OBJS[$i]}; do
+      case "$obj" in *.rel) b="${obj%.rel}" ;; *) continue ;; esac
+      if [ "$b" = "farrt" ] && [ ! -f "$MDIR/farrt.c" ]; then
+        # the resident runtime: env override > sibling copy > repo lib/ext
+        src="${BANKPACK_FARRT:-}"
+        if [ -z "$src" ]; then
+          if [ -f "$MDIR/farrt.asm" ]; then src="$MDIR/farrt.asm"; else src="$BROOT/lib/ext/farrt.asm"; fi
+        fi
+        [ -f "$src" ] || die "--build: cannot locate farrt.asm (no $MDIR/farrt.asm, no repo above $MDIR; set BANKPACK_FARRT)"
+        sdasz80 -o "$obj" "$src" || die "--build: assembling $src failed"
+      elif [ -f "$MDIR/$b.c" ]; then
+        sdcc -c -mz80 --sdcccall 1 "${CCINC[@]}" -o "$obj" "$MDIR/$b.c" || die "--build: compiling $b.c failed"
+      elif [ -f "$MDIR/$b.asm" ]; then
+        sdasz80 -o "$obj" "$MDIR/$b.asm" || die "--build: assembling $b.asm failed"
+      elif [ -f "$obj" ]; then
+        :  # prebuilt .rel with no sibling source -- use as-is
+      else
+        die "--build: no source for $obj (looked for $MDIR/$b.c and $MDIR/$b.asm)"
+      fi
+    done
+  done
+fi
+
+# If far entries exist (FAR lines or FAR_FN), the generated thunks belong in the
+# resident bank. The dispatch table for them is patched per entry in step 4 --
+# base _fartab from the RESIDENT link, targets from each OWNING bank's link.
+if [ "${#FAR_NAME[@]}" -ge 1 ]; then
+  [ -f _bp_far_thunks.rel ] || die "run 'bankpack --gen' + assemble _bp_far_thunks.asm first (or use --build)"
+  OBJS[0]="${OBJS[0]} _bp_far_thunks.rel"
 fi
 
 link_bank() {  # <run> <data> <base> <input-rels-and--g-opts...>
@@ -315,10 +470,20 @@ place "${SEGS[0]}" "_bp_resident"
 DT_SEG=(); DT_SRC=(); DT_DST=(); DT_LEN=()
 for i in $(seq 1 $(( ${#SEGS[@]} - 1 )) ); do
   base="_bp_bank${SEGS[$i]}"
+  # Symbols DEFINED inside this bank win over the resident map: with natural-name
+  # thunks the resident exports _<name> too, and injecting it into the bank that
+  # DEFINES <name> (a sibling module calling its bank-mate's far function) would
+  # be a duplicate definition. Skipping keeps such intra-bank calls near calls.
+  declare -A BDEF=()
+  for obj in ${OBJS[$i]}; do
+    [ -f "$obj" ] || continue
+    while read -r name; do BDEF["$name"]=1; done \
+      < <(awk '$1=="S" && $3 ~ /^Def/ {print $2}' "$obj")
+  done
   gopts=()
   for obj in ${OBJS[$i]}; do
     while read -r name; do
-      [ -n "${RSYM[$name]:-}" ] && gopts+=( -g "$name=${RSYM[$name]}" )
+      [ -z "${BDEF[$name]:-}" ] && [ -n "${RSYM[$name]:-}" ] && gopts+=( -g "$name=${RSYM[$name]}" )
     done < <(awk '$1=="S" && $3 ~ /^Ref/ {print $2}' "$obj")
   done
   link_bank "${RUNS[$i]}" "$NEXT" "$base" _bp_bankorder.rel ${OBJS[$i]} $(shadow_gflags ${OBJS[$i]}) "${gopts[@]}"
@@ -383,8 +548,29 @@ else
     "$dtab_off" "$((RAMBASE))" "$NEXT" "${#DT_SEG[@]}"
 fi
 
-# 4. patch the dispatch table (bank->bank calls) into the ROM image
-if [ -n "$FARTAB" ]; then
+# 4. patch the dispatch table (bank->bank calls) into the ROM image. Two cases:
+#  - auto (FAR/FAR_FN entries, no FARTAB directive): base _fartab comes from the
+#    RESIDENT link (the thunk module lives there) and each slot's TARGET address
+#    is read from the OWNING bank's .noi -- the manifest says which SEG a far
+#    function lives in. NEVER a merged symbol map: thunks carry the function's
+#    own name, so BOTH the resident (thunk) and the owning bank (real code)
+#    define _<name>, and a merged map would silently pick one of them.
+#  - manual FARTAB directive: legacy merged-map lookup (hand-written tables name
+#    symbols that exist exactly once across the links, no generated thunks).
+if [ "${#FAR_NAME[@]}" -ge 1 ] && [ -z "$FARTAB" ]; then
+  base_addr="${RSYM[_fartab]:-}"; [ -n "$base_addr" ] || die "resident link has no _fartab (far thunks missing?)"
+  base_off=$(( SEGS[0] * SEGSIZE + (base_addr - RUNS[0]) ))
+  for i in "${!FAR_NAME[@]}"; do
+    n="${FAR_NAME[$i]}"; seg="${FAR_SEG[$i]}"; noif="_bp_bank${seg}.noi"
+    [ -f "$noif" ] || die "far function '$n': seg $seg is not a linked bank (no $noif)"
+    addr=$(noi "_$n" "$noif")
+    [ -n "$addr" ] || die "far function '$n' is not defined in seg $seg (no _$n in $noif)"
+    off=$(( base_off + i * 2 ))
+    lo=$(( addr & 0xFF )); hi=$(( (addr >> 8) & 0xFF ))
+    printf "$(printf '\\x%02x\\x%02x' "$lo" "$hi")" | dd of="$OUT" bs=1 seek="$off" conv=notrunc status=none
+    printf "bankpack: fartab[%d] = %-14s 0x%04x seg %-3s (file @ 0x%04x)\n" "$i" "_$n" "$addr" "$seg" "$off"
+  done
+elif [ -n "$FARTAB" ]; then
   declare -A ALLSYM=()
   for f in _bp_*.noi; do
     while read -r kw name val; do [ "$kw" = "DEF" ] && ALLSYM["$name"]="$val"; done < "$f"
@@ -404,21 +590,24 @@ if [ -n "$FARTAB" ]; then
   done
 fi
 
-# 5. safety checks (link-map): enforce the invariants banking relies on.
+# 5. safety checks (link-map): enforce the invariants banking relies on. Like
+# step 4: the thunk (and its far_ alias) is looked up in the RESIDENT link, the
+# target in its OWNING bank's link -- per-bank .noi, never a merged map.
 if [ "${#FAR_NAME[@]}" -ge 1 ]; then
-  declare -A CHKSYM=()
-  for f in _bp_*.noi; do
-    while read -r kw name val; do [ "$kw" = "DEF" ] && CHKSYM["$name"]="$val"; done < "$f"
-  done
   problems=0
-  for n in "${FAR_NAME[@]}"; do
-    th="${CHKSYM[_far_$n]:-}"; tg="${CHKSYM[_$n]:-}"
-    # thunk must be resident (below the window); target must be IN the window
+  for i in "${!FAR_NAME[@]}"; do
+    n="${FAR_NAME[$i]}"; seg="${FAR_SEG[$i]}"
+    th="${RSYM[_$n]:-}"; al="${RSYM[_far_$n]:-}"
+    tg=""; [ -f "_bp_bank${seg}.noi" ] && tg=$(noi "_$n" "_bp_bank${seg}.noi")
+    # thunk + alias must be resident (below the window); target IN the window
     if [ -n "$th" ] && [ "$((th))" -ge "$((WINDOW))" ]; then
-      echo "bankpack: CHECK FAIL: thunk _far_$n at $th is not resident (>= window $WINDOW)" >&2; problems=$((problems+1))
+      echo "bankpack: CHECK FAIL: thunk _$n at $th is not resident (>= window $WINDOW)" >&2; problems=$((problems+1))
+    fi
+    if [ -n "$al" ] && [ "$((al))" -ge "$((WINDOW))" ]; then
+      echo "bankpack: CHECK FAIL: alias _far_$n at $al is not resident (>= window $WINDOW)" >&2; problems=$((problems+1))
     fi
     if [ -n "$tg" ] && [ "$((tg))" -lt "$((WINDOW))" ]; then
-      echo "bankpack: CHECK FAIL: far target _$n at $tg is not in the window (< $WINDOW)" >&2; problems=$((problems+1))
+      echo "bankpack: CHECK FAIL: far target _$n (seg $seg) at $tg is not in the window (< $WINDOW)" >&2; problems=$((problems+1))
     fi
   done
   # advisory: scan the resident binary for a direct call/jp into the window
@@ -433,4 +622,4 @@ if [ "${#FAR_NAME[@]}" -ge 1 ]; then
                         || die "$problems safety-check failure(s)"
 fi
 
-echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB * 1024 / SEGSIZE)) x $((SEGSIZE / 1024)) KB segments, ${MAPPER:-ASCII8})"
+echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB * 1024 / SEGSIZE)) x $((SEGSIZE / 1024)) KB segments, ${MAPPER:-ASCII8} -- openMSX: -romtype $ROMTYPE)"

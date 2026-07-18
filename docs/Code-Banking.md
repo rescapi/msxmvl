@@ -29,8 +29,9 @@ call *within* the same bank is a normal, free near-call.
 
 ## What you write
 
-It looks like ordinary C. A function in one bank can call a function in another with a `far_`
-prefix; the tool wires up the rest.
+It looks like ordinary C. Mark a bank function callable from outside its bank with **`FAR_FN`**,
+then call it from anywhere — resident or another bank — **by its own name**; the tool wires up
+the rest.
 
 **A "gameplay" bank that calls a "scoring" bank:**
 
@@ -40,23 +41,24 @@ prefix; the tool wires up the rest.
 #include "far.h"
 
 // Finish a level: award the level's points, plus a fixed clear bonus.
-u16 play_level(u16 level)
+FAR_FN u16 play_level(u16 level)
 {
-	return far_level_score(level) + 50;   // 50-point clear bonus; scoring lives in bank 6
+	return level_score(level) + 50;   // 50-point clear bonus; scoring lives in bank 6
 }
 ```
 ```c
 // scoring.c  (lives in ROM bank 6)
 #include "types.h"
+#include "far.h"
 
 // Base score for a level: 100 points per level number.
-u16 level_score(u16 level)
+FAR_FN u16 level_score(u16 level)
 {
-	return level * 100;                   // a runtime multiply — see note below
+	return level * 100;               // a runtime multiply — see note below
 }
 ```
 
-**Resident `main` — call a banked function as `far_<name>()`:**
+**Resident `main` — call a banked function like any other function:**
 
 ```c
 // main.c  (resident, always mapped)
@@ -65,28 +67,47 @@ u16 level_score(u16 level)
 
 void main(void)
 {
-	u16 score = far_play_level(3);   // resident -> gameplay bank -> scoring bank, automatic
+	u16 score = play_level(3);   // resident -> gameplay bank -> scoring bank, automatic
 	// score == 350:  play_level(3) = level_score(3) + 50 = (3 * 100) + 50
 	...
 }
 ```
 
-**A one-line-per-bank manifest — which bank each function lives in:**
+**A one-line-per-bank manifest — which objects live in which bank:**
 
 ```
 # SEG  RUN     OBJ
   0    0x4000  farrt.rel main.rel      # resident: runtime + main (+ generated thunks)
-  5    0x8000  gameplay.rel            # play_level
-  6    0x8000  scoring.rel             # level_score
-
-FAR 5 u16 play_level(u16 level)        # declare each far-callable function + its bank
-FAR 6 u16 level_score(u16 level)
+  5    0x8000  gameplay.rel            # FAR_FN play_level
+  6    0x8000  scoring.rel             # FAR_FN level_score
 ```
 
-That's the whole developer-facing surface: `far_<name>(...)` at the call site, `<name>(...)`
-written normally inside a bank, and one `FAR` line per entry point.
+That's the whole developer-facing surface: `FAR_FN` on the definition, a plain `name(...)`
+at every call site, and one manifest line per bank. `FAR_FN` expands to nothing — the
+build's text scan is what reads it — and the bank a function lives in follows from which
+OBJ list names its `.rel`.
+
+> **Compatibility:** the older spelling keeps working. A manifest can declare entry points
+> explicitly (`FAR 5 u16 play_level(u16 level)`) instead of — or alongside — `FAR_FN`, and
+> every far function is also callable as `far_<name>(...)`: the generated `far.h` declares
+> both names, and the thunk carries both labels at the same address (zero cost).
 
 ## Building
+
+One command builds the ROM — scan `FAR_FN`, generate `far.h` + the thunks, compile every
+source, link each bank, patch the tables, write the image:
+
+```sh
+bankpack.sh --build bank.manifest game.rom 64
+```
+
+`--build` compiles each manifest OBJ from its sibling `.c`/`.asm` next to the manifest,
+locates `farrt.asm` by searching upward from the manifest for `lib/ext/farrt.asm`
+(override with `BANKPACK_FARRT=/path/to/farrt.asm` when building outside the repo), and
+adds the repo's `lib/gen` to the include path when it finds it.
+
+The explicit two-step flow keeps working, for build systems that want to own the compile
+step:
 
 ```sh
 bankpack.sh --gen bank.manifest .        # generate far.h + the resident thunks/table
@@ -94,9 +115,10 @@ bankpack.sh --gen bank.manifest .        # generate far.h + the resident thunks/
 bankpack.sh bank.manifest game.rom 64    # link each bank, patch the table, write the ROM
 ```
 
-`--gen` reads the `FAR` lines and writes **`far.h`** (the `far_<name>` declarations you `#include`)
-plus the resident call thunks and dispatch table. The build step links every bank at the window
-address and patches each function's real address into the table.
+The gen step reads the `FAR_FN` annotations (and any explicit `FAR` lines) and writes
+**`far.h`** (the declarations you `#include` — natural and `far_` names) plus the resident
+call thunks and dispatch table. The build step links every bank at the window address and
+patches each function's real address — read from its *owning bank's* link — into the table.
 
 ## What bankpack handles for you
 
@@ -106,8 +128,10 @@ address and patches each function's real address into the table.
   `__mulint`. bankpack places them **once** in the resident part and shares them, so `level_score`'s
   `level * 100` works with no per-bank duplication.
 - **Mistake-proofing.** The build checks every thunk is resident and every far target is in the
-  window. Forgetting the `far_` prefix (calling `play_level()` instead of `far_play_level()`) is
-  caught at link time as an undefined symbol, not as a crash.
+  window. Calling a bank function you *forgot* to mark `FAR_FN` (or declare with a `FAR` line)
+  is caught at link time as an undefined symbol, not as a crash — no thunk exists, and bank
+  symbols are never injected into other banks' links. `FAR_FN` on a *resident* function is a
+  hard build error too (resident code is always mapped; it needs no thunk).
 
 ## Statics in banked code — the data model
 
@@ -150,19 +174,36 @@ single source of truth. The complete tested program for all of this is **`exampl
 resident + two banks, each with initialized statics and BSS, asserted on C-BIOS_MSX1 *and*
 C-BIOS_MSX2, plus a deliberate `RESERVE` collision asserted to fail the build.
 
-## 16 KB banks (ASCII-16)
+## Other cartridges: one manifest line per mapper
 
-One manifest line switches the whole build to an **ASCII-16** cartridge with **16 KB
-segments** — for a subsystem (or a const data table) too big for an 8 KB bank:
+The default build is an ASCII-8 MegaROM, but one manifest line retargets the whole
+program to any of the supported cartridge mappers:
 
 ```
 MAPPER ASCII16
 ```
 
-Nothing else changes: both mappers select the window through the same cartridge register, so
-the runtime, the thunks, the call cost, and the statics data model are identical. The tested
-program is **`examples/banking/bank16/`** — a bank carrying a checksummed **~9 KB const table** (impossible
-under ASCII-8), verified on C-BIOS_MSX1 and MSX2.
+| `MAPPER`     | segment | why you'd pick it                                     | openMSX `-romtype` |
+|--------------|---------|-------------------------------------------------------|--------------------|
+| `ASCII8`     | 8 KB    | the default; common flash/homebrew mapper             | `ASCII8`           |
+| `ASCII16`    | 16 KB   | a subsystem or const table too big for an 8 KB bank   | `ASCII16`          |
+| `KONAMI`     | 8 KB    | the classic Konami mapper; widest loader recognition  | `Konami`           |
+| `KONAMI_SCC` | 8 KB    | runs **natively** on Carnivore2 / MegaFlashROM / Yamanooto flash carts | `KonamiSCC` |
+
+Nothing else changes: every supported mapper selects the window through one cartridge
+register write, so the runtime, the thunks, the call cost, and the statics data model are
+identical — boot the image with the listed `-romtype` (the build prints it). Mapper quirks
+are enforced as build errors, not left to crash on hardware: the resident must be segment 0
+(hardware-fixed on `KONAMI`), and on `KONAMI_SCC` a code bank can't sit on a segment whose
+select value would enable the SCC sound chip instead of ROM (63, 127, 191, 255).
+
+**Bigger than 64 KB** is just a build argument — `bankpack.sh --build game.manifest
+game.rom 512` writes a 512 KB image (up to 2 MB ASCII-8/Konami, 4 MB ASCII-16), and a bank
+placed beyond the image is a build error. Tested programs: **`examples/banking/bank16/`** — an ASCII-16
+bank carrying a checksummed **~9 KB const table** (impossible under ASCII-8);
+**`examples/banking/bankbig/`** — a **512 KB** ASCII-8 image with far code + statics in segment 63;
+**`examples/banking/bankscc/`** and **`examples/banking/bankkonami/`** — the turnkey program as Konami-SCC and
+plain Konami images; all verified on C-BIOS_MSX1 and MSX2.
 
 ## One rule for far functions
 

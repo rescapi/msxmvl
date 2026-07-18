@@ -13,5 +13,8 @@ programs the library's CI runs — if they are here, they passed.
 | `farturnkey/` | the all-C turnkey flow: manifest + generated thunks |
 | `bankdata/` | writable statics in every bank + `RESERVE` collision check |
 | `bank16/` | ASCII-16: 16 KB segments, a checksummed >8 KB payload |
+| `bankbig/` | 512 KB ASCII-8: statics in segment 63, geometry checks |
+| `bankkonami/` | Konami mapper (resident pinned to segment 0) |
+| `bankscc/` | Konami-SCC mapper + the segment-0x3F sound-chip refusal |
 
 Run one: `bash examples/banking/farturnkey/run.sh`

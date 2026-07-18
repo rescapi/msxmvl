@@ -1,12 +1,10 @@
-# Turnkey banked ROM: the developer writes ONLY plain C + this manifest.
-# bankpack --gen creates far.h (call declarations) and the resident thunks +
-# dispatch table; the build links each bank and patches the table.
+# Turnkey banked ROM: the developer writes ONLY plain C + this manifest. The
+# far-callable functions are marked FAR_FN in the bank sources, so no FAR lines
+# are needed here: `bankpack --build` scans the sources, generates far.h + the
+# resident thunks/dispatch table, compiles everything, links each bank and
+# patches the table. (Explicit `FAR <seg> <proto>` lines remain supported.)
 #
 # SEG  RUN     OBJ
   0    0x4000  farrt.rel main.rel      # resident: runtime + C main (+ generated thunks, auto)
-  5    0x8000  bankA.rel               # play_level (calls level_score)
-  6    0x8000  bankB.rel               # level_score (leaf)
-
-# Far-callable functions (C prototypes). SEG = which bank each lives in.
-FAR 5 u16 play_level(u16 level)
-FAR 6 u16 level_score(u16 level)
+  5    0x8000  bankA.rel               # FAR_FN play_level (calls level_score)
+  6    0x8000  bankB.rel               # FAR_FN level_score (leaf)

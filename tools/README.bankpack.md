@@ -1,19 +1,51 @@
 # bankpack
 
-Turns "banked code" into a real **ASCII-8 or ASCII-16 MegaROM**. Pure bash + the SDCC toolchain
-(`sdldz80`, `sdasz80`, `sdobjcopy`) + coreutils. **No Python.** Two modes:
+Turns "banked code" into a real **MegaROM** — ASCII-8, ASCII-16, Konami, or Konami-SCC
+mapper (see the mapper table below), images up to the mappers' 256-segment limit. Pure
+bash + the SDCC toolchain (`sdldz80`, `sdasz80`, `sdobjcopy`) + coreutils. **No Python.**
+Three modes:
 
 ```sh
-bankpack.sh --gen <manifest> [outdir]      # generate far.h + far thunks
-bankpack.sh <manifest> <out.rom> [rom_kb]  # link banks + assemble the ROM (rom_kb=64)
+bankpack.sh --gen   <manifest> [outdir]             # generate far.h + far thunks
+bankpack.sh         <manifest> <out.rom> [rom_kb]   # link banks + assemble the ROM (rom_kb=64)
+bankpack.sh --build <manifest> <out.rom> [rom_kb]   # ONE command: gen + compile + build
 ```
 
 Runs in the **current directory**: reads the `.rel` files named in the manifest and
-writes intermediates (`_bp_*.ihx/.map/.noi/.bin`) there.
+writes intermediates (`_bp_*.ihx/.map/.noi/.bin`, compiled `.rel`) there.
 
 ## Turnkey flow
 
-The developer writes plain C + a manifest; bankpack generates the glue:
+The developer writes plain C + a manifest. A bank source marks each far-callable
+**definition** with `FAR_FN`, and callers use the function's **own name**:
+
+```c
+FAR_FN u16 play_level(u16 level) { ... }   // in a bank source
+...
+score = play_level(3);                      // any caller, resident or another bank
+```
+
+then one command builds the ROM:
+
+```sh
+bankpack.sh --build bank.manifest game.rom 64
+```
+
+`--build` runs the whole pipeline: scan `FAR_FN` → generate `far.h` +
+`_bp_far_thunks.asm` (written **next to the manifest**, so `#include "far.h"`
+resolves from the sources), compile every manifest OBJ that has a sibling `.c`
+(`sdcc -c -mz80 --sdcccall 1`) or `.asm` (`sdasz80`) next to the manifest, assemble
+`farrt.asm` + the generated thunks, then link banks, patch the tables, and write the
+ROM. An OBJ with no sibling source but an existing `.rel` is used as-is (prebuilt).
+
+`farrt.asm` is auto-located by searching **upward from the manifest's directory** for
+`lib/ext/farrt.asm`; a copy next to the manifest wins over the repo one, and the env
+var `BANKPACK_FARRT=/path/to/farrt.asm` overrides both (needed when building in a
+scratch dir outside the repo). When the upward search finds the repo, its `lib/gen`
+is added to the compiler include path (for `types.h`).
+
+The **two-step flow keeps working unchanged**, for build systems that own the
+compile step:
 
 1. `bankpack --gen bank.manifest .` → **`far.h`** (call declarations) and
    **`_bp_far_thunks.asm`** (resident thunks + dispatch table).
@@ -22,8 +54,34 @@ The developer writes plain C + a manifest; bankpack generates the glue:
 3. `bankpack bank.manifest game.rom` → link each bank, patch the dispatch table,
    assemble the ROM.
 
-Caller-side, a cross-bank call is just `far_<name>(args)`; the bank *defines*
-`<name>(...)` normally. See `examples/banking/farturnkey/` for an all-C worked example.
+See `examples/banking/farturnkey/` for the all-C, one-command worked example.
+
+### FAR_FN scanning rules
+
+The gen step (and `--build`) derives far entries from the sources by **pure text
+extraction** — no compile step:
+
+- For every OBJ of every bank, `<name>.rel` maps to `<name>.c` **next to the
+  manifest**; a missing `.c` is simply not scanned (explicit `FAR` lines cover it).
+- A line whose **first token is `FAR_FN`** contributes one far function. The
+  prototype is the rest of the line up to `{`, so the **full prototype must sit on
+  the `FAR_FN` line**; the owning SEG is the bank whose OBJ list named the `.rel`.
+- `far.h` `#define`s `FAR_FN` to nothing, so annotated sources compile normally.
+- Explicit `FAR <seg> <proto>` manifest lines still work, and mix freely with
+  `FAR_FN`. The **same function via both routes (or twice) is a build error**.
+- `FAR_FN` in a **resident** source is a build error ("resident functions need no
+  FAR_FN") — resident code is always mapped and needs no thunk.
+
+### Natural call names + `far_` aliases
+
+Each generated thunk is named after the far function **itself** (`_play_level`), so
+callers just write `play_level(3)` — no prefix. This cannot collide with the bank's
+own definition because banks link **separately**; correspondingly, the build resolves
+each far target's address from the **owning bank's `.noi`** (the manifest says which
+SEG the function lives in), never from a merged symbol map, and the safety checks do
+the same. Every thunk also carries **`_far_<name>` as an alias label at the same
+address** (zero cost), and `far.h` declares both prototypes — so existing
+`far_<name>(...)` callers keep compiling and linking unchanged.
 
 ## Manifest
 
@@ -36,13 +94,21 @@ Whitespace-separated; `#` comments and blank lines ignored.
   5    0x8000   render.rel
 ```
 
-- **SEG** — ASCII-8 segment number (8 KB each); file offset = `SEG * 0x2000`.
+- **SEG** — segment number (8 KB each; 16 KB on ASCII-16); file offset =
+  `SEG * segment size`.
 - **RUN** — address the bank is *linked to run at* (`0x4000` resident; `0x8000`
   for the bank-2 window).
 - **OBJ** — one or more `.rel` files linked into that bank.
 
 The **first line is the resident bank**: linked first, and the only bank that may
 be referenced by name from the others.
+
+Far functions are declared either with `FAR_FN` in the bank source (preferred, see
+the scanning rules above) or explicitly in the manifest:
+
+```
+FAR 5 u16 play_level(u16 level)     # SEG + C prototype
+```
 
 Data-model keywords (all optional):
 
@@ -53,12 +119,51 @@ SHADOW  0xE020          # memseg shadow byte (env BANKPACK_SHADOW overrides)
 MAPPER  ASCII16         # cartridge mapper (default ASCII8)
 ```
 
-`MAPPER ASCII16` switches to **16 KB segments**: SEG numbers the 16 KB segment
-(file offset `SEG * 0x4000`), and a single bank may carry up to 16 KB of
-code + const data. Everything else is identical — both mappers select the
-`0x8000` window through the **same register** (`0x7000`), so `farrt.asm`, the
-generated thunks, the far-call cost, and the whole data model carry over
-unchanged. Boot the ROM with `-romtype ASCII16` in openMSX.
+### Mappers
+
+| `MAPPER`     | window select | segment | resident (0x4000)          | openMSX `-romtype` |
+|--------------|---------------|---------|----------------------------|--------------------|
+| `ASCII8`     | `0x7000`      | 8 KB    | SEG 0 (reset state)        | `ASCII8`           |
+| `ASCII16`    | `0x7000`      | 16 KB   | SEG 0 (reset state)        | `ASCII16`          |
+| `KONAMI`     | `0x8000`      | 8 KB    | SEG 0 (**hardware-fixed**) | `Konami`           |
+| `KONAMI_SCC` | `0x9000`      | 8 KB    | SEG 0 (reset state)        | `KonamiSCC`        |
+
+Every supported mapper selects the `0x8000` window with **one 8-bit register
+write**, so `farrt.asm`, the generated thunks, the far-call cost, and the whole
+data model are identical across all of them — a mapper swap costs the program one
+manifest line. Per mapper: `ASCII16` switches to **16 KB segments** (file offset
+`SEG * 0x4000`; a single bank may carry up to 16 KB of code + const data); the
+`KONAMI`/`KONAMI_SCC` select registers sit *inside* the window (harmless — the
+mapper eats the write, ROM reads are unaffected); on `KONAMI` the resident's 8 KB
+at `0x4000` is hardware-wired to segment 0 — no select register exists for it.
+Boot with the listed `-romtype` — always pass it explicitly, openMSX's
+auto-detection guesses on homebrew images; the build's final report line prints
+the right one.
+
+### Big ROMs
+
+Nothing structural caps the image at 64 KB: `rom_kb` scales the file and the
+segment offsets scale with it, up to the 8-bit select register's 256 segments
+(2 MB ASCII-8/Konami, 4 MB ASCII-16). One capacity to know about: `_bp_datatab`
+holds 32 entries, which caps banks **with initialized statics** — not banks
+overall. Worked example: `examples/banking/bankbig/` (512 KB ASCII-8, far code + statics in
+SEG 63, the image's last segment).
+
+### Manifest build checks (mapper + geometry)
+
+All hard build errors:
+
+- the **resident must be SEG 0** — every mapper's reset state maps segment 0 at
+  `0x4000`, and on `KONAMI` it is hardware-fixed there (no register exists);
+- every **SEG ≤ 255** — the mappers' select register is 8-bit;
+- every **SEG inside the image** (`SEG < rom_kb*1024 / segsize`) — a bank past
+  the end would otherwise silently **grow** the file via `dd seek` into an image
+  no loader accepts;
+- **`rom_kb` a multiple of the segment size**;
+- `KONAMI_SCC` only: a code bank on a segment whose select value has the **low 6
+  bits all 1** (`0x3F`/`0x7F`/`0xBF`/`0xFF`) is refused — writing such a value
+  enables the **SCC sound chip** at `0x9800` instead of ROM, so a thunk mapping
+  that segment would call into SCC registers, not code.
 
 ### C-runtime data model (statics in banks)
 
@@ -109,11 +214,18 @@ banks call resident + each other). bankpack breaks it by rule:
    NoICE `.noi` — the `.map` truncates names at 9 chars).
 2. For each other bank, scan its `.rel` for the externals it **references**
    (`S <name> Ref…`), look each up in the resident symbol table, and inject only
-   those via `sdldz80 -g <name>=<addr>`.
+   those via `sdldz80 -g <name>=<addr>`. A symbol the bank **defines itself** is
+   never injected (with natural-name thunks the resident exports `_<name>` too;
+   injecting it into the owning bank would be a duplicate definition — and an
+   intra-bank call to a far function correctly stays a near call).
 
-So no bank ever needs another bank's address at link time. Cross-*bank* calls are
-expected to route through a resident dispatcher (by ID), not by direct symbol —
-only **resident** symbols are injectable here.
+So no bank ever needs another bank's address at link time. A bank→bank call is a
+reference to the resident *thunk* (which carries the far function's name), resolved
+by the same injection — only **resident** symbols are injectable here. Far *target*
+addresses, patched into the dispatch table after all banks link, are read from each
+function's **owning bank's `.noi`** (the manifest's SEG says which), never from a
+merged map — both the resident (thunk) and the owning bank (real code) define
+`_<name>`, so a merged map would be ambiguous.
 
 ## Assembly
 
@@ -137,18 +249,21 @@ Measured helper sizes (resident cost, one-time): `*` ~20 B, `u16 /` ~50 B,
 
 `z80.lib` is auto-located; override with `BANKPACK_Z80LIB=/path/to/z80.lib`.
 
-## Safety checks (automatic, on every build with FAR lines)
+## Safety checks (automatic, on every build with far entries)
 
 After assembling the ROM, bankpack verifies the invariants banking relies on:
-- each generated thunk `_far_<name>` is **resident** (below the 0x8000 window);
-- each far target `_<name>` is **in the window** (>= 0x8000);
+- each generated thunk `_<name>` **and its `_far_<name>` alias** are **resident**
+  (below the 0x8000 window) — looked up in the resident's `.noi`;
+- each far target `_<name>` is **in the window** (>= 0x8000) — looked up in its
+  **owning bank's** `.noi` (per the manifest's SEG), never a merged map;
 - (heuristic) a warning if resident code contains a direct `call`/`jp` into the
   window range `0x8000-0xBFFF` — such a branch bypasses a thunk and would jump
   into whichever segment happens to be mapped.
 
-A hard failure aborts the build (`CHECK FAIL: ...`). Note that a plain
-`foo()` instead of `far_foo()` to a bank function is *already* caught earlier as
-an undefined-symbol link error, since bank symbols aren't injected into callers.
+A hard failure aborts the build (`CHECK FAIL: ...`). Note that calling a bank
+function that was never marked `FAR_FN` (nor declared `FAR`) is *already* caught
+earlier as an undefined-symbol link error, since bank symbols aren't injected
+into callers.
 
 ## Far-call cost (measured, `examples/banking/bankperf`)
 
@@ -188,11 +303,19 @@ ride in `A`) and more than ~3 args (they spill to the stack). Use `u16`.
 
 - `examples/banking/bank2/`      — asm banks; window switch + bank→resident call.
 - `examples/banking/bankcall/`   — C banks; nested bank→bank call via a hand-written table.
-- `examples/banking/farturnkey/` — **all C + manifest**; thunks/table/header generated.
+- `examples/banking/farturnkey/` — **all C + manifest, one `--build` command**; `FAR_FN`
+  annotations, natural-name calls, thunks/table/header generated; also asserts
+  the FAR_FN-in-resident build error.
 - `examples/banking/bankdata/`   — **statics in every bank** (init data + BSS + `RESERVE`),
   asserted on C-BIOS_MSX1 and C-BIOS_MSX2.
 - `examples/banking/bank16/`     — **ASCII-16**: 16 KB segments, a bank with a checksummed
   **>8 KB payload**, the statics model intact, on both machines.
+- `examples/banking/bankbig/`    — **512 KB ASCII-8** (64 segments): far code + statics in
+  **SEG 63**, exact ROM file size, and SEG-beyond-ROM asserted to fail.
+- `examples/banking/bankscc/`    — **KONAMI_SCC**: the turnkey program as a Konami-SCC
+  image, plus the SCC seg-63 refusal asserted.
+- `examples/banking/bankkonami/` — **KONAMI**: same program as a plain Konami image, plus
+  the resident-must-be-SEG-0 refusal asserted.
 
 ## Not yet handled (roadmap)
 
