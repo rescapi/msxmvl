@@ -74,7 +74,7 @@ sector access, which needs no file system at all.
 | [Math Utilities](Math-Utilities.md) | `math` | ÷10 and %10, bit-reverse, random numbers |
 | [Fixed-Point](Fixed-Point.md) | `fixed_point` | fractions without floats (the Z80 has no FPU) |
 | [String Conversion](String-Conversion.md) | `string` | numbers → text |
-| [Compression](Compression.md) | `compress` | unpack RLEp data — fit more into the ROM |
+| [Compression](Compression.md) | `compress`, `unzx0`/`unzx7`/`unpletter`/`unlzsa2` | unpack RLEp, **ZX0** (+ VRAM), ZX7, Pletter or LZSA2 — clean-room, measured, to fit more into the ROM |
 | [Encryption](Encryption.md) | `crypt` | save-game passwords, obfuscated blobs |
 | [Localization](Localization.md) | `localize` | one text table per language, switched at runtime |
 

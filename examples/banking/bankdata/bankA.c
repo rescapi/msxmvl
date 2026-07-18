@@ -1,6 +1,8 @@
 // Bank 5 — banked module with real writable statics.
 #include "types.h"
 
+u16 res_helper(u16 x);         // resident; shared with bankA2 (dedup regression)
+
 static u16 a_magic = 0xA55A;   // initialized: farrt must copy this bank's DATA slice
 static u8  a_bss[16];          // BSS: farrt must zero it
 static u16 a_value = 0x1111;   // initialized + mutated later (aliasing check)
@@ -12,6 +14,7 @@ u16 a_probe(u16 unused)
 	if (a_magic != 0xA55A) ok = 0;
 	if (a_value != 0x1111) ok = 0;
 	for (i = 0; i < 16; ++i) if (a_bss[i] != 0) ok = 0;
+	if (res_helper(0) != 0x1234) ok = 0;   // calls the shared resident helper
 	return ok;
 }
 

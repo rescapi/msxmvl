@@ -55,6 +55,11 @@ run "$H/sprfx_01_flip.c"      "sprite_fx.c" a5 8
 
 # Logic modules — no MSX2 hardware at all
 run "$H/compress_01_rlep.c"   "memory.c compress.c" a5 8
+run "$H/unzx0_01_roundtrip.c" "unzx0.c" a5 8
+run "$H/unzx0_02_vram.c"      "unzx0.c" a5 8
+run "$H/unzx7_01_roundtrip.c"     "unzx7.c" a5 8
+run "$H/unpletter_01_roundtrip.c" "unpletter.c" a5 8
+run "$H/unlzsa2_01_roundtrip.c"   "unlzsa2.c" a5 8
 run "$H/fsm_01_states.c"      "fsm.c" a5 8
 run "$H/mutex_01_locks.c"     "" a5 8
 run "$H/localize_01_lang.c"   "localize.c" a5 8
