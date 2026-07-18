@@ -117,6 +117,11 @@ EX_EXT=audio run "$H/msxaudio_01_reg.c" "msx-audio.c" a5 8
 EX_EXT=audio EX_DBG="Generic MSX-Audio RAM" EX_DBGOFS=0x1000 EX_DBGLEN=8 EX_DBGWANT=1122334455667788 \
   run "$H/msxaudio_02_adpcm.c" "msx-audio.c" a5 8
 
+# Sound (MoonBlaster) — the full MoonBlaster 1.4 replayer: sample-kit upload verified
+# by readback, deterministic MoonBlaster_Tick fast-forward, then real BIOS-interrupt
+# playback through H.TIMI. EX_DATALOC clears the replayer's home at 0xB000-0xC50F.
+EX_EXT=audio EX_DATALOC=0xC600 run "$H/moonblaster_01_play.c" "moonblaster.c msx-audio.c" a5 8
+
 # Real-time clock (clock) — RP-5C01, MSX2+; CMOS save needs no disk
 run "$H/clock_01_datetime.c"  "clock.c" a5 4
 run "$H/clock_02_savedata.c"  "clock.c" a5 4

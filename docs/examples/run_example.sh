@@ -48,6 +48,8 @@ for m in $MODS; do
   done
 done
 cp "$EX" "$W/ex.c"
+# example-local generated headers (e.g. the embedded MoonBlaster song/kit arrays)
+cp "$(dirname "$EX")"/*.h "$W/" 2>/dev/null || true
 cp "$CRT0SRC" "$W/crt0.asm"
 
 ( cd "$W"; export DEFS="$DEFS"; rm -f out.ihx out.rom
@@ -59,7 +61,9 @@ cp "$CRT0SRC" "$W/crt0.asm"
   # crt0.rel FIRST: the cartridge header must land exactly at 0x4000. The crt0
   # declares the area order, so _INITIALIZER lands in ROM after the code and the
   # startup copy actually has something to copy.
-  sdcc -o out.ihx --code-loc 0x4000 --data-loc 0xC000 -mz80 --no-std-crt0 --sdcccall 1 \
+  # EX_DATALOC moves the RAM data segment for examples that reserve low page-3
+  # RAM (the MoonBlaster replayer occupies 0xB000-0xC50F, so its example uses 0xC600)
+  sdcc -o out.ihx --code-loc 0x4000 --data-loc "${EX_DATALOC:-0xC000}" -mz80 --no-std-crt0 --sdcccall 1 \
        crt0.rel ex.rel $RELS 2>>build.log || { echo "LINK FAIL"; cat build.log; exit 1; }
 
   IS=$(awk '$2=="s__INITIALIZER"{print $1}' out.map); IL=$(awk '$2=="l__INITIALIZER"{print $1}' out.map)
