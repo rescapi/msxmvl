@@ -20,7 +20,7 @@ snippet in the documentation). The harness boots the ROM, waits for `main` to ru
 ```
 
 `EX_MACHINE=C-BIOS_MSX1` builds an example with `-DMSX_VERSION=MSX_1` and boots it on an MSX1.
-That is how the documentation's MSX1 claim is backed: 23 examples are actually run there, and the modules
+That is how the documentation's MSX1 claim is backed: over 30 examples are actually run there, and the modules
 that genuinely need a V9938 or the MSX2 RAM mapper are excluded rather than fudged. See the header
 of `run_all_msx1.sh` for the two examples that pass *vacuously* on MSX1 and must not be added.
 

@@ -64,6 +64,7 @@ sector access, which needs no file system at all.
 | [MSX-DOS 2 — file handles](docs/MSX-DOS-2.md) | `dos` | open / read / write / close, subdirectories. **DOS 2 only** |
 | [MSX-DOS 1 — FCB](docs/MSX-DOS-1.md) | `dos` | the older CP/M-style API. Runs on **DOS 1 *and* DOS 2** |
 | [Raw Sectors](docs/Disk-Sectors.md) | `disk` | read and write sectors directly — no files, no FAT |
+| [Boot Disks](docs/Boot-Disk.md) | `bootsector` / `diskos` | ship a **self-booting `.dsk`** — no DOS on it — and stream data blobs by id |
 
 ## Data
 
@@ -92,6 +93,7 @@ sector access, which needs no file system at all.
 | Page | Module | What it gives you |
 |------|--------|-------------------|
 | [Real-Time Clock](docs/Real-Time-Clock.md) | `clock` | date and time, plus 6 bytes of battery-backed save |
+| [Game Saves](docs/Game-Saves.md) | `sram`, `pac` | battery-backed **cartridge saves** — a PAC/FM-PAC, or your MegaROM's own SRAM chip |
 
 ## Which machines does it run on?
 

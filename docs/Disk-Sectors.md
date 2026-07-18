@@ -115,4 +115,6 @@ and walk the FAT yourself — all of which `DiskDOS_ReadSectors` is perfectly ab
 ## See also
 
 - [MSX-DOS files](MSX-DOS-2.md) — the layer above: files, directories, MSX-DOS.
+- [Boot Disks](Boot-Disk.md) — the layer built on top of this: a self-booting `.dsk` whose
+  mini-diskOS streams data blobs by reading their precomputed sectors, no FAT walk.
 - [Code Banking](Code-Banking.md) — the other way to get past the 64 KB wall, from ROM.

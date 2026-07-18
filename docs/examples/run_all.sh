@@ -133,6 +133,13 @@ run "$H/isr_01_im2.c" "isr.c" a5 8
 run "$H/clock_01_datetime.c"  "clock.c" a5 4
 run "$H/clock_02_savedata.c"  "clock.c" a5 4
 
+# Game saves (sram + pac) — battery-backed PAC cartridge SRAM. The openMSX `pac`
+# extension is the SRAM-only Panasoft SW-M001: NO copyrighted ROM involved, so
+# unlike the FMPAC these run everywhere, including CI. (The mapper-SRAM backend
+# needs a bankpack MegaROM and is covered by test/banksram/run.sh.)
+EX_EXT=pac run "$H/sram_01_pac.c" "sram.c" a5 8
+EX_EXT=pac EX_DEFS='-DAPPSIGN="MVZ8"' run "$H/pac_01_compat.c" "pac.c sram.c" a5 8
+
 # File I/O (dos) is NOT run here: it needs an MSX-DOS system disk + disk-ROM machine,
 # which are copyrighted and cannot ship. Run it yourself with:
 #   ./run_example_dos.sh dos_01_file.c "dos.c" a5 8            # DOS 2 handles

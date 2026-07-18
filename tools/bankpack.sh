@@ -42,6 +42,23 @@
 #                                     (see the mapper table in parse_manifest).
 #                                     The final report line prints the matching
 #                                     openMSX -romtype.
+#   SRAM <kb> [select]                battery-backed SRAM chip on the cartridge
+#                                     (mapper-SRAM: requires MAPPER ASCII8 or
+#                                     ASCII16). Emits SRAM_SELECT / SRAM_SIZE /
+#                                     SRAM_SHADOW / SRAM_BANKREG into far.h for
+#                                     lib/ext/sram.c's SRAM_BACKEND_MAPPER. The
+#                                     select value that maps SRAM instead of ROM
+#                                     into the window is rom_kb/8 on ASCII8 (the
+#                                     first bit above the ROM's banks; [select]
+#                                     overrides it for Wizardry-style fixed
+#                                     wiring) and 0x10 on ASCII16. Sizes: ASCII8
+#                                     2/8/32 KB, ASCII16 2/8 KB (the openMSX
+#                                     ASCII8SRAM*/ASCII16SRAM* -romtypes). The
+#                                     .rom image itself is unchanged -- SRAM is
+#                                     a chip on the cart, not file content. A
+#                                     select value that collides with a code
+#                                     segment number is a hard build error (its
+#                                     thunk would map SRAM, not code).
 #
 # C-RUNTIME DATA MODEL (docs/Code-Banking-Data-Model.md): every bank may have
 # writable C statics. The resident links its _DATA/_INITIALIZED at RAMBASE; each
@@ -83,7 +100,7 @@ find_z80lib() {
 # ---- shared manifest parse: fills SEGS/RUNS/OBJS, FAR_SEG/FAR_NAME/FAR_PROTO, FARTAB ----
 parse_manifest() {
   SEGS=(); RUNS=(); OBJS=(); FAR_SEG=(); FAR_NAME=(); FAR_PROTO=(); FARTAB=""
-  RAMBASE=""; RESERVES=(); MSHADOW=""; MAPPER=""
+  RAMBASE=""; RESERVES=(); MSHADOW=""; MAPPER=""; SRAM_KB=""; SRAM_SEL=""
   local a b rest s
   while read -r a b rest; do
     [ -z "${a:-}" ] && continue
@@ -108,6 +125,9 @@ parse_manifest() {
       MAPPER)
         [ -n "$b" ] || die "MAPPER needs a type (ASCII8, ASCII16, KONAMI, KONAMI_SCC)"
         MAPPER="$b" ;;
+      SRAM)
+        [ -n "$b" ] || die "SRAM needs a size in KB (ASCII8: 2/8/32; ASCII16: 2/8)"
+        SRAM_KB="$b"; SRAM_SEL="${rest%% *}" ;;
       *)
         [ -n "$b" ] && [ -n "$rest" ] || die "bad manifest line: $a $b $rest"
         SEGS+=("$a"); RUNS+=("$b"); OBJS+=("$rest") ;;
@@ -144,6 +164,37 @@ parse_manifest() {
     [ "$((s))" -le 255 ] || die "SEG $s does not fit the mapper's 8-bit select register (max 255)"
     if [ "${MAPPER:-ASCII8}" = "KONAMI_SCC" ] && [ $(( s & 0x3F )) -eq "$((0x3F))" ]; then
       die "SEG $s would map the SCC sound chip, not ROM (on KONAMI_SCC a select value with the low 6 bits all 1 -- 0x3F/0x7F/0xBF/0xFF -- enables the SCC at 0x9800); move this code bank"
+    fi
+  done
+}
+
+# ---- SRAM line: validate + derive the select value (needs rom_kb) ----
+# Sets SRAM_SELECT (the bank-select value that maps SRAM instead of ROM into
+# the 0x8000 window) and SRAM_ROMTYPE (the matching openMSX -romtype). Hardware
+# ground truth (docs/SRAM.md, openMSX device sources): on ASCII8 the SRAM
+# enable bit is the ROM size in 8 KB banks -- the first bit ABOVE the ROM's
+# bank numbers (overridable for Wizardry-style fixed wiring); on ASCII16 it is
+# exactly 0x10 (no block bits; the chip mirrors through the 16 KB window).
+# Guard: a code SEG sharing bits with the select value is a hard error -- the
+# thunk writing that segment number would map SRAM, not code.
+sram_config() {  # <rom_kb>
+  SRAM_SELECT=""; SRAM_ROMTYPE=""
+  [ -n "$SRAM_KB" ] || return 0
+  case "${MAPPER:-ASCII8}" in
+    ASCII8)
+      case "$SRAM_KB" in 2|8|32) ;; *) die "SRAM $SRAM_KB KB: ASCII8 mapper-SRAM comes in 2, 8 or 32 KB" ;; esac
+      SRAM_SELECT="${SRAM_SEL:-$(( $1 / 8 ))}" ;;
+    ASCII16)
+      case "$SRAM_KB" in 2|8) ;; *) die "SRAM $SRAM_KB KB: ASCII16 mapper-SRAM comes in 2 or 8 KB" ;; esac
+      SRAM_SELECT="${SRAM_SEL:-16}" ;;
+    *) die "SRAM needs MAPPER ASCII8 or ASCII16 (the SRAM chip hangs off the ASCII mappers' select registers), got ${MAPPER}" ;;
+  esac
+  SRAM_ROMTYPE="${MAPPER:-ASCII8}SRAM$SRAM_KB"
+  local s
+  for s in "${SEGS[@]:-}"; do
+    [ -n "$s" ] || continue
+    if [ $(( s & SRAM_SELECT )) -ne 0 ]; then
+      die "SRAM select value $(printf 0x%02x "$((SRAM_SELECT))") collides with code SEG $s (writing that segment's select maps SRAM, not ROM -- shrink the ROM or move the bank)"
     fi
   done
 }
@@ -208,8 +259,21 @@ emit_far_files() {  # <outdir>
       printf 'extern %s;\n' \
         "$(printf '%s' "${FAR_PROTO[$i]}" | sed 's/\([A-Za-z_][A-Za-z0-9_]*\)[[:space:]]*(/far_\1(/')"
     done
+    if [ -n "${SRAM_SELECT:-}" ]; then
+      echo "// SRAM (manifest 'SRAM $SRAM_KB'): constants for lib/ext/sram.c's"
+      echo "// SRAM_BACKEND_MAPPER. Single-sourced from the manifest + mapper table."
+      printf '#define SRAM_SELECT  0x%02x    /* select value that maps SRAM into the window */\n' "$((SRAM_SELECT))"
+      printf '#define SRAM_SIZE    %uu   /* usable SRAM bytes */\n' "$((SRAM_KB * 1024))"
+      printf '#define SRAM_SHADOW  0x%04x  /* window shadow byte (segment now mapped) */\n' "$((SHADOW))"
+      printf '#define SRAM_BANKREG 0x%04x  /* the 0x8000 window'"'"'s bank-select register */\n' "$((ADDR_BANK2))"
+    fi
     echo "#endif"
   } > "$H"
+
+  if [ "${#FAR_NAME[@]}" -eq 0 ]; then
+    echo "bankpack: gen: wrote $H (no far functions; SRAM constants only)"
+    return 0
+  fi
 
   {
     echo ";; generated by 'bankpack --gen' -- do not edit"
@@ -262,11 +326,14 @@ ASM
 # --gen : emit far.h + _bp_far_thunks.asm (FAR lines + FAR_FN scan)
 # =====================================================================
 if [ "${1:-}" = "--gen" ]; then
-  MANIFEST="${2:?usage: bankpack.sh --gen <manifest> [outdir]}"
+  MANIFEST="${2:?usage: bankpack.sh --gen <manifest> [outdir] [rom_kb]}"
   OUTDIR="${3:-.}"
+  GEN_ROM_KB="${4:-64}"   # only the SRAM select value depends on it (ASCII8: rom_kb/8)
   parse_manifest "$MANIFEST"
   scan_far_fn "$MANIFEST"
-  [ "${#FAR_NAME[@]}" -ge 1 ] || die "--gen: manifest has no FAR lines and no FAR_FN-annotated sources"
+  sram_config "$GEN_ROM_KB"
+  [ "${#FAR_NAME[@]}" -ge 1 ] || [ -n "$SRAM_KB" ] \
+    || die "--gen: manifest has no FAR lines, no FAR_FN-annotated sources and no SRAM line"
   emit_far_files "$OUTDIR"
   exit 0
 fi
@@ -294,6 +361,18 @@ for s in "${SEGS[@]}"; do
   [ "$((s))" -lt "$NSEG" ] \
     || die "SEG $s is beyond ROM size ($ROM_KB KB ${MAPPER:-ASCII8} has segments 0..$((NSEG - 1)))"
 done
+sram_config "$ROM_KB"
+# two-step flow only (--build regenerates far.h below): a far.h generated with
+# a different rom_kb would carry a stale SRAM_SELECT already compiled into the
+# banks -- catch the mismatch here.
+if [ -n "${SRAM_SELECT:-}" ] && [ "$BUILD_ALL" -eq 0 ]; then
+  GENH="$(dirname "$MANIFEST")/far.h"
+  if [ -f "$GENH" ]; then
+    have=$(sed -n 's/^#define SRAM_SELECT[[:space:]]*\(0x[0-9a-fA-F]*\).*/\1/p' "$GENH")
+    [ -z "$have" ] || [ "$((have))" -eq "$((SRAM_SELECT))" ] \
+      || die "far.h has SRAM_SELECT $have but rom_kb=$ROM_KB gives $(printf 0x%02x "$((SRAM_SELECT))") -- re-run --gen with rom_kb $ROM_KB and recompile"
+  fi
+fi
 
 # ---- --build prelude: generate + compile everything the manifest names ----
 # Outputs (.rel and all _bp_* intermediates) land in the CURRENT directory, like
@@ -307,11 +386,16 @@ if [ "$BUILD_ALL" -eq 1 ]; then
   BROOT="$MDIR"; while [ ! -f "$BROOT/lib/ext/farrt.asm" ] && [ "$BROOT" != / ]; do BROOT=$(dirname "$BROOT"); done
   CCINC=( -I. -I"$MDIR" )
   [ -f "$BROOT/lib/gen/types.h" ] && CCINC+=( -I"$BROOT/lib/gen" )
+  # a manifest with an SRAM line means every sram.c in this project is the
+  # mapper-backend one -- select it for the user (harmless for other sources).
+  [ -n "$SRAM_KB" ] && CCINC+=( -DSRAM_BACKEND_MAPPER )
 
-  if [ "${#FAR_NAME[@]}" -ge 1 ]; then
+  if [ "${#FAR_NAME[@]}" -ge 1 ] || [ -n "$SRAM_KB" ]; then
     # far.h must sit NEXT TO the sources: a quoted #include "far.h" resolves
     # relative to the including file, wherever the build directory is.
     emit_far_files "$MDIR"
+  fi
+  if [ "${#FAR_NAME[@]}" -ge 1 ]; then
     sdasz80 -o _bp_far_thunks.rel "$MDIR/_bp_far_thunks.asm" || die "--build: assembling far thunks failed"
   fi
 
@@ -622,4 +706,7 @@ if [ "${#FAR_NAME[@]}" -ge 1 ]; then
                         || die "$problems safety-check failure(s)"
 fi
 
-echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB * 1024 / SEGSIZE)) x $((SEGSIZE / 1024)) KB segments, ${MAPPER:-ASCII8} -- openMSX: -romtype $ROMTYPE)"
+if [ -n "${SRAM_SELECT:-}" ]; then
+  printf "bankpack: SRAM %s KB on the cartridge, select 0x%02x (constants in far.h; boot with the SRAM -romtype below)\n" "$SRAM_KB" "$((SRAM_SELECT))"
+fi
+echo "bankpack: wrote $OUT ($((ROM_KB)) KB, $((ROM_KB * 1024 / SEGSIZE)) x $((SEGSIZE / 1024)) KB segments, ${MAPPER:-ASCII8} -- openMSX: -romtype ${SRAM_ROMTYPE:-$ROMTYPE})"
