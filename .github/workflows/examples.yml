@@ -20,7 +20,7 @@ jobs:
       - name: Install SDCC + openMSX
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends sdcc openmsx
+          sudo apt-get install -y --no-install-recommends sdcc openmsx python3-pil
 
       - name: Sanity — toolchain present, C-BIOS bootable
         run: |
@@ -31,6 +31,11 @@ jobs:
           # rather than deep inside the example loop.
           timeout 25 openmsx -machine C-BIOS_MSX2 -command "after time 2 { exit 0 }" \
             || { echo "::error::C-BIOS_MSX2 machine not available in this openMSX"; exit 1; }
+
+      - name: Asset-pipeline host tools — golden tests (img2tiles, img2bitmap)
+        run: |
+          cd docs/examples
+          bash run_tools.sh
 
       - name: Documentation examples — MSX2 (+ drift guard)
         run: |

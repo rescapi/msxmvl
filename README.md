@@ -37,6 +37,7 @@ where most libraries stop and hand you the bare hardware.
 | [Sprite Transforms](docs/Sprite-FX.md) | `sprite_fx` | flip and mask sprite shapes in RAM |
 | [Double Buffering](docs/Double-Buffering.md) | `display` | draw off-screen, then flip — no flicker |
 | [3D Math](docs/3D-Math.md) | `g3d` | fixed-point multiply and sin/cos tables for software 3D |
+| [Asset Pipeline](docs/Asset-Pipeline.md) | `img2tiles`, `img2bitmap`, `gentables` | turn your own PNGs into SCREEN 2 tiles or SCREEN 5/7/8 bitmaps, and bake sin/cos/atan tables — build-time tools, golden-tested |
 
 ## Sound
 
@@ -83,6 +84,9 @@ sector access, which needs no file system at all.
 | Page | Module | What it gives you |
 |------|--------|-------------------|
 | [State Machines](docs/State-Machines.md) | `fsm` | title → play → game-over, with enter/tick/leave callbacks |
+| [Game Menu](docs/Game-Menu.md) | `game_menu` | data-driven menus — cursor, wrap/clamp, joystick select |
+| [Game Sequence](docs/Game-Sequence.md) | `game_seq` | timed cutscene/intro beats on a frame timer, with skip |
+| [Game State](docs/Game-State.md) | `game_state` | a state stack (pause over play) and 256 progress flags in 32 bytes |
 | [Mutexes](docs/Mutexes.md) | `mutex` | 8 locks in one byte — keep the interrupt handler off the VDP |
 | [VBlank Sync](docs/VBlank-Sync.md) | `vsync` | wait for the screen refresh; the heartbeat of every game loop |
 | [Interrupts](docs/Interrupts.md) | `isr` | IM 2 takeover: your C handler runs **164 T** after the interrupt — no BIOS in the loop |

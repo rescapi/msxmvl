@@ -1,11 +1,22 @@
 # Roadmap: closing the MSXgl content gap (full-breadth)
 
-**Status:** PLAN. The action plan derived from [GAP_ANALYSIS_MSXGL.md](GAP_ANALYSIS_MSXGL.md).
-Goal: **cover the whole content-plumbing gap** — decompression, music trackers, sound effects,
-the asset pipeline, and the game-framework helpers — comprehensively, not one-token-per-area.
-The library's thesis is unchanged and applies to every module: clean-room, verified on emulated
-hardware, and **smaller AND faster than its reference, both measured** (see the standing
-requirement). True-niche hardware breadth is deliberately parked (see the bottom).
+**Status:** "ship a game" MILESTONE REACHED. The action plan derived from
+[GAP_ANALYSIS_MSXGL.md](GAP_ANALYSIS_MSXGL.md). Goal: **cover the whole content-plumbing gap** —
+decompression, music trackers, sound effects, the asset pipeline, and the game-framework helpers —
+comprehensively, not one-token-per-area. The library's thesis is unchanged and applies to every
+module: clean-room, verified on emulated hardware, and **smaller AND faster than its reference,
+both measured** (see the standing requirement). True-niche hardware breadth is deliberately parked
+(see the bottom).
+
+**Landed:** A (decompression: RLEp, ZX0/ZX0_fast, Pletter, ZX7, LZSA2 — the last three
+match+integrate on already-tuned references). B (trackers: five reference baselines auditioned +
+characterised, our own VGM player — see [TRACKER_PLAYERS.md](TRACKER_PLAYERS.md)). C (ayFX SFX,
+integrated+measured). **D complete** — D1 tiles (`img2tiles`), D2 SCREEN 5/7/8 bitmaps
+(`img2bitmap`), D3 sin/cos/atan tables (`gentables`), D4 optimal palette (`--optimal`), all
+golden-tested in CI — see [../Asset-Pipeline.md](../Asset-Pipeline.md). **E complete** — E1
+`game_menu`, E2 `game_seq`, E3 `game_state`, each self-checked on hardware. A developer can now
+compress assets, convert their own art, bake maths tables, play music + SFX, and drive menus /
+cutscenes / nested state — entirely within msxmvl.
 
 ## Why breadth here, and why the "reactive default" was wrong
 
@@ -81,7 +92,15 @@ pure-logic, byte-exact-oracle module — the shape msxmvl does best, and each a 
 Author-time: piggyback the existing external encoders (`zx0`, `pletter`, …); the asset pipeline
 (Category D) wraps them. Each publishes an ours-vs-reference size/speed table.
 
-## Category B — Music trackers  (the clearest feature gap; parallel to A)
+## Category B — Music trackers  (the clearest feature gap; parallel to A; SHIPPED)
+
+**Result → [TRACKER_PLAYERS.md](TRACKER_PLAYERS.md).** All five formats auditioned as reference
+baselines and characterised with measured size + interrupt T-states, verified byte-identical via
+each player's chip-state oracle. **Verdict:** the four third-party reference players (AKG, PT3,
+WYZ, Trilo) carry no redundant-work slack (unlike our own MoonBlaster players, which did) — so the
+honest bar is **match + integrate** (matched T-cost, oracle-verified, zero-overhead C API, cleared
+provenance, on-target oracle suite the references ship none of), exactly as for the tuned ZX0/LZSA2
+decoders. **B5 VGM is ours outright** (clean-room AY register-log replay).
 
 msxmvl plays only MoonBlaster 1.4. Cover the living tracker set. **B1 builds the harness**
 (reference-player register-trace oracle + an `experiments/<fmt>-irqtime` interrupt-budget rig,
@@ -103,7 +122,11 @@ interrupt T-state** headline — a claim MSXgl makes for none of its bundled pla
 Per-format caveat: bundle only license-cleared example songs (as the MoonBlaster C.v/d Geest
 song was); otherwise generate a trivial original.
 
-## Category C — Sound effects  (completes game audio; after B1)
+## Category C — Sound effects  (completes game audio; after B1; SHIPPED)
+
+Integrated the mvac7 MIT ayFX player (`experiments/ayfx/` → `AYFX.rom`), measured (~1157 T/frame
+mixed) — a tuned scene-standard SFX player, so **match + integrate** as with the trackers. See
+[TRACKER_PLAYERS.md](TRACKER_PLAYERS.md).
 
 - **C1 ayFX-style PSG SFX layer** — (**S**) `Init/Play/Update`, channel-priority mixing with an
   explicit documented contract for which PSG channel SFX may steal from the music driver;
@@ -117,21 +140,32 @@ bash+netpbm), deterministic, golden-tested, drift-guarded. **D1 builds the conve
 rest extend it.
 
 - **D1 image → SCREEN 2/4 tileset + de-duped name table + 8×8/16×16 sprite bank** — *first*
-  (**M–L**). Emits C/asm arrays (folds in the trivial bin→array job), optionally ZX0-packed
-  (consumes A1). A "your art on screen in ten minutes" drift-guarded doc.
-- **D2 SCREEN 5/7/8 (bitmap/MSX2) image import** — (**M**) once D1's pipeline exists.
-- **D3 maths-table generator** (sin/cos/atan fixed-point — MSXmath's job) — (**S**) a few lines of
-  host script, folded into the tool; no standalone C++.
-- **D4 tilemap / palette helpers** — (**S–M**) authoring conveniences on D1.
+  (**M–L**, SHIPPED: `tools/img2tiles.py`, golden-tested, [../Asset-Pipeline.md](../Asset-Pipeline.md)).
+  Emits C/asm arrays (folds in the trivial bin→array job), optionally ZX0-packed (consumes A1). A
+  "your art on screen in ten minutes" drift-guarded doc.
+- **D2 SCREEN 5/7/8 (bitmap/MSX2) image import** — (**M**, SHIPPED: `tools/img2bitmap.py`,
+  golden-tested, [../Asset-Pipeline.md](../Asset-Pipeline.md)). 4bpp SCREEN 5/7 (2 px/byte +
+  emitted MSX2 palette in VDP format) and 8bpp SCREEN 8 (fixed GRB332). Both D1 + D2 golden
+  tests now run in CI (`docs/examples/run_tools.sh`).
+- **D3 maths-table generator** (sin/cos/atan fixed-point — MSXmath's job) — (**S**, SHIPPED:
+  `tools/gentables.py`, golden-tested). Binary-angle sin/cos (i8 or i16 by amplitude) + atan
+  slope→brad table; pure Python, no numpy. [../Asset-Pipeline.md](../Asset-Pipeline.md).
+- **D4 tilemap / palette helpers** — (**S–M**, SHIPPED: `img2bitmap --optimal`, golden-tested).
+  Per-image optimal 16-colour palette by deterministic median-cut in the MSX2 512-colour space
+  (a large quality jump for photographic SCREEN 5/7 art over the fixed default palette). Tilemap
+  authoring is already served by D1's de-duplicated name table. [../Asset-Pipeline.md](../Asset-Pipeline.md).
 
 ## Category E — Game framework  (ease-of-use; independent)
 
 `game_pawn` + `fsm` exist. Add the convenience layers MSXgl ships, built on `input`/`print`/
 `vsync`, verified by scripted-input self-check drivers (`test/ext` style):
 
-- **E1 game_menu** (**S–M**) — data-driven menu (items, cursor, callbacks).
-- **E2 game_seq** (**S–M**) — scripted sequence / cutscene runner on `fsm`.
-- **E3 game_state / bitfield** (**S**) — small state-stack + packed-flag helpers.
+- **E1 game_menu** (**S–M**, SHIPPED: `lib/gen/game_menu`, self-checked, [../Game-Menu.md](../Game-Menu.md))
+  — data-driven menu (items, cursor, navigation, select).
+- **E2 game_seq** (**S–M**, SHIPPED: `lib/gen/game_seq`, self-checked, [../Game-Sequence.md](../Game-Sequence.md))
+  — data-driven timed sequence / cutscene runner (the linear counterpart to `fsm`), with skip.
+- **E3 game_state / bitfield** (**S**, SHIPPED: `lib/gen/game_state`, self-checked, [../Game-State.md](../Game-State.md))
+  — state stack (nested screens) + packed boolean flags (256 flags / 32 bytes, SRAM-save friendly).
 
 ---
 
