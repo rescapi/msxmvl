@@ -124,11 +124,20 @@ song was); otherwise generate a trivial original.
 
 ## Category C — Sound effects  (completes game audio; after B1; SHIPPED)
 
-Integrated the mvac7 MIT ayFX player (`experiments/ayfx/` → `AYFX.rom`), measured (~1157 T/frame
-mixed) — a tuned scene-standard SFX player, so **match + integrate** as with the trackers. See
-[TRACKER_PLAYERS.md](TRACKER_PLAYERS.md).
+Integrated the mvac7 MIT ayFX player (`experiments/ayfx/` → `AYFX.rom`) — a tuned scene-standard
+SFX player, so **match + integrate** as with the trackers. **SFX firing verified** on channel C
+by reading the real PSG registers headless (`verify.sh`: amplitude + tone period + mixer tone
+enable). Measured `ayFX_Decode`+`PlayAY`: idle **~1009 T/frame** (max 1168), active-SFX **~1460
+T/frame** (max 1509). An integration bug was found and fixed along the way — the vendor's `__naked`
+asm reads args stack-first (`--sdcccall 0`) but msxmvl builds `--sdcccall 1`, so the arg-taking
+functions needed `__sdcccall(0)`. See [TRACKER_PLAYERS.md](TRACKER_PLAYERS.md).
 
-- **C1 ayFX-style PSG SFX layer** — (**S**) `Init/Play/Update`, channel-priority mixing with an
+- **C1 ayFX-style PSG SFX layer** — (**S**, SHIPPED as a library module: `lib/ext/ayfx`,
+  [../Sound-Effects.md](../Sound-Effects.md)). Now folded into the public lib (not just the
+  `experiments/ayfx` rig): shares msxmvl's PSG shadow so one `PSG_Apply` flushes music + SFX,
+  mixer converted to msxmvl's active-high convention, setup no longer clears the shadow. The
+  interaction test `ayfx_01.c` proves the SFX plays AND the music is undisturbed (the contract
+  below), on-target + drift-guarded. `Init/Play/Update`, channel-priority mixing with an
   explicit documented contract for which PSG channel SFX may steal from the music driver;
   interaction test proving the music is undisturbed and restored. Measured per-interrupt cost.
 

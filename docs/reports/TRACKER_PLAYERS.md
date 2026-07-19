@@ -28,7 +28,7 @@ Boot each in openMSX (`-machine Philips_NMS_8245`) to hear the reference player:
 | PT3 (SapphiRe/Bulba) | 1680 B | 5632 / 5727 | **match** — 99% channels active, no idle slack |
 | WYZ (Ruiz) | — | 4718 / 10646 | **match** — variance is structural decode, not slack |
 | Trilo (cornelisser) | — | 9164 / 17537 | **match** — SCC waveform reload already gated on change |
-| ayFX SFX (mvac7) | — | ~1157 (mix) | **match** — tuned scene-standard SFX player |
+| ayFX SFX (mvac7) | — | 1009 idle / 1460 active (max 1509) | **match** — tuned scene-standard; SFX firing verified on channel C |
 
 **Conclusion (evidence-based, profiled *and* code-read per player):** none of these
 third-party players carry redundant-work slack. The mb14/MBFM optimisation wins

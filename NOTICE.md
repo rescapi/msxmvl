@@ -23,6 +23,16 @@ compression algorithms are © 2019 Emmanuel Marty. Used under the **zlib licence
 licence notice and attribution are retained verbatim in the module's source header, and the
 alteration is plainly marked, per the licence's terms.
 
+## ayFX sound-effects replayer (third-party, MIT licence)
+
+`lib/ext/ayfx.c` / `ayfx.h` is **not** clean-room. It is SapphiRe's ayFX REPLAYER (fixed-volume
+v1.31) as adapted to SDCC by **mvac7** (fR3eL project, `ayFXplayer` v1.1), from
+<http://www.z80st.es/blog/tags/ayfx>. It is used under the **MIT licence** with attribution, and
+is an *altered version*: it shares msxmvl's PSG shadow (`g_PSG_Regs`) instead of a private buffer,
+converts the mixer to msxmvl's active-high convention, drops the buffer-clear in setup so music is
+not silenced, and pins its arg-taking `__naked` functions to `__sdcccall(0)`. The alterations are
+plainly marked in the module header, per the licence.
+
 ## MoonBlaster
 
 `lib/ext/moonblaster_player.asm` is the MoonBlaster 1.4 replayer (`mbplay`, Moonsoft) — the

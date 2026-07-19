@@ -28,7 +28,7 @@ declare -A PAGE=(
  [scroll_01_offset]=Hardware-Scroll.md
  [compress_01_rlep]=Compression.md
  [unzx0_01_roundtrip]=Compression.md [unzx0_02_vram]=Compression.md [unzx7_01_roundtrip]=Compression.md [unpletter_01_roundtrip]=Compression.md [unlzsa2_01_roundtrip]=Compression.md
- [fsm_01_states]=State-Machines.md [game_menu_01]=Game-Menu.md [game_seq_01]=Game-Sequence.md [game_state_01]=Game-State.md
+ [fsm_01_states]=State-Machines.md [ayfx_01]=Sound-Effects.md [game_menu_01]=Game-Menu.md [game_seq_01]=Game-Sequence.md [game_state_01]=Game-State.md
  [mutex_01_locks]=Mutexes.md
  [localize_01_lang]=Localization.md
  [crypt_01_roundtrip]=Encryption.md
