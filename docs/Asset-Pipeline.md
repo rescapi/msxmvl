@@ -173,4 +173,5 @@ tables), D4 (`--optimal` median-cut palette) and **8×8/16×16 sprite banks**
 ## See also
 - [VDP Access](VDP-Access.md) — pushing the pattern/colour/name tables into VRAM.
 - [Tilemaps](Tilemaps.md) — drawing with the name table on-screen.
+- [Sprite Transforms](Sprite-FX.md) — flipping/masking the sprite patterns `img2sprites` emits.
 - [Compression](Compression.md) — `UnZX0` to unpack a ZX0-packed tileset at load time.
