@@ -11,9 +11,9 @@ both measured** (see the standing requirement). True-niche hardware breadth is d
 **Landed:** A (decompression: RLEp, ZX0/ZX0_fast, Pletter, ZX7, LZSA2 — the last three
 match+integrate on already-tuned references). B (trackers: five reference baselines auditioned +
 characterised, our own VGM player — see [TRACKER_PLAYERS.md](TRACKER_PLAYERS.md)). C (ayFX SFX,
-integrated+measured). **D complete** — D1 tiles (`img2tiles`), D2 SCREEN 5/7/8 bitmaps
-(`img2bitmap`), D3 sin/cos/atan tables (`gentables`), D4 optimal palette (`--optimal`), all
-golden-tested in CI — see [../Asset-Pipeline.md](../Asset-Pipeline.md). **E complete** — E1
+integrated+measured). **D complete** — D1 tiles (`img2tiles`), D2 SCREEN 5/7/8 + SCREEN 12
+YJK bitmaps (`img2bitmap`), D3 sin/cos/atan tables (`gentables`), D4 optimal palette (`--optimal`),
+D5 hardware sprite banks (`img2sprites`), all golden-tested in CI — see [../Asset-Pipeline.md](../Asset-Pipeline.md). **E complete** — E1
 `game_menu`, E2 `game_seq`, E3 `game_state`, each self-checked on hardware. A developer can now
 compress assets, convert their own art, bake maths tables, play music + SFX, and drive menus /
 cutscenes / nested state — entirely within msxmvl.
@@ -165,6 +165,9 @@ rest extend it.
   Per-image optimal 16-colour palette by deterministic median-cut in the MSX2 512-colour space
   (a large quality jump for photographic SCREEN 5/7 art over the fixed default palette). Tilemap
   authoring is already served by D1's de-duplicated name table. [../Asset-Pipeline.md](../Asset-Pipeline.md).
+- **D5 hardware sprite banks** — (**S**, SHIPPED: `tools/img2sprites.py`, golden-tested). PNG sprite
+  sheet → MSX 8×8 / 16×16 sprite pattern table (16×16 in the VDP quadrant order TL/BL/TR/BR) plus a
+  per-sprite colour byte. Completes the image-converter half of gap #3 (what MSXimg does for sprites).
 
 ## Category E — Game framework  (ease-of-use; independent)
 
