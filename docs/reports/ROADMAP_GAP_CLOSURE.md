@@ -165,9 +165,11 @@ rest extend it.
   Per-image optimal 16-colour palette by deterministic median-cut in the MSX2 512-colour space
   (a large quality jump for photographic SCREEN 5/7 art over the fixed default palette). Tilemap
   authoring is already served by D1's de-duplicated name table. [../Asset-Pipeline.md](../Asset-Pipeline.md).
-- **D5 hardware sprite banks** — (**S**, SHIPPED: `tools/img2sprites.py`, golden-tested). PNG sprite
+- **D5 hardware sprite banks** — (**S–M**, SHIPPED: `tools/img2sprites.py`, golden-tested). PNG sprite
   sheet → MSX 8×8 / 16×16 sprite pattern table (16×16 in the VDP quadrant order TL/BL/TR/BR) plus a
-  per-sprite colour byte. Completes the image-converter half of gap #3 (what MSXimg does for sprites).
+  per-sprite colour byte. **`--mode2`** decomposes each cell into OR-colour planes (base CC=0 +
+  stacked CC=0x40) for true multi-colour MSX2 sprite-mode-2 sprites. Completes the image-converter
+  half of gap #3 (what MSXimg does for sprites).
 
 ## Category E — Game framework  (ease-of-use; independent)
 

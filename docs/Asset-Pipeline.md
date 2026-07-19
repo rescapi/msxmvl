@@ -110,7 +110,28 @@ one sprite:
 
 `<name>_colour[count]` holds each sprite's colour (the nearest TMS9918 palette index of
 its most-common lit pixel) for the SCREEN 2 sprite-mode-1 attribute byte. Plus
-`#define <NAME>_COUNT/_SIZE`.
+`#define <NAME>_COUNT/_SIZE/_PLANES` (`_PLANES` is 1 here).
+
+### Multi-colour sprites — `--mode2` (OR colour)
+
+MSX sprites are one colour per pattern, but **MSX2 sprite mode 2** (SCREEN 4–8) builds
+a multi-colour sprite by **stacking monochrome planes** at the same position: each
+plane's per-line colour byte has a **CC (colour-combination) bit** — when set, the VDP
+gives that plane the same priority as the nearest lower-numbered plane whose CC=0, and
+**OR-combines their colour codes where dots overlap**. `--mode2` produces that layout:
+
+```sh
+python3 tools/img2sprites.py  hero.png  hero  16  hero_sprites.h  --mode2
+```
+
+Each cell is decomposed into one monochrome plane per distinct colour (a **uniform**
+`<NAME>_PLANES` count across the sheet, so plane `p` of sprite `s` is at index
+`s*PLANES + p`). The **base plane** (lowest palette index) gets colour byte `colour`
+with **CC=0**; the **stacked planes** get `colour | 0x40` (**CC=1**). The colour byte is
+`EC(7) | CC(6) | IC(5) | 0 | colour(3-0)` — the caller writes it to all 16 lines of that
+plane's mode-2 colour table, and places the `PLANES` consecutive sprite planes at the
+same X/Y. Mode 2 allows 8 sprites per horizontal line, so keep combined sprites to a few
+planes. (Refs: MSX2 Technical Handbook ch.4; msx.org "The OR Color".)
 
 ## Maths tables — sin / cos / atan (`gentables`)
 

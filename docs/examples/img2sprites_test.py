@@ -93,17 +93,53 @@ def test_transparent(d):
     if arr(t, "tr_colour") != [1]:
         print("FAIL: empty sprite colour should default to 1", arr(t, "tr_colour")); sys.exit(1)
 
+def test_mode2(d):
+    # --mode2 multi-colour: decompose each cell into one monochrome plane per distinct
+    # colour, base plane CC=0, stacked planes CC=0x40 (OR-colour ready). Uniform plane
+    # count = max distinct colours across the sheet.
+    # 16x8 = two 8x8 sprites. Sprite 0: green pixel at (0,0) + red pixel at (7,7) -> 2
+    # colours. Sprite 1: white pixel at (0,0) -> 1 colour. So PLANES = 2 (uniform).
+    GREEN, RED, WHITE = (33, 200, 66), (252, 85, 84), (255, 255, 255)  # idx 2, 8, 15
+    def paint(px):
+        px[0, 0] = GREEN
+        px[7, 7] = RED
+        px[8, 0] = WHITE          # sprite 1 (cell x=8..15), local (0,0)
+    p = os.path.join(d, "m2.png"); make(p, 16, 8, "RGB", paint)
+    t = run(d, p, "m2", 8, "--mode2")
+    if "M2_PLANES 2" not in t or "M2_COUNT 2" not in t:
+        print("FAIL: mode2 defines\n", t); sys.exit(1)
+    pat, col = arr(t, "m2_pattern"), arr(t, "m2_colour")
+    # sprite0: plane0 green (idx 2, base CC=0) mask has bit at row0; plane1 red (idx 8,
+    #          CC=0x40) mask has bit at row7. sprite1: plane0 white (idx15) row0; plane1 empty.
+    if len(pat) != 2 * 2 * 8:      # 2 sprites * 2 planes * 8 bytes
+        print("FAIL: mode2 pattern length", len(pat)); sys.exit(1)
+    s0p0, s0p1 = pat[0:8], pat[8:16]
+    s1p0, s1p1 = pat[16:24], pat[24:32]
+    if s0p0 != [0x80, 0, 0, 0, 0, 0, 0, 0]:
+        print("FAIL: mode2 s0 base(green) plane", s0p0); sys.exit(1)
+    if s0p1 != [0, 0, 0, 0, 0, 0, 0, 0x01]:
+        print("FAIL: mode2 s0 stacked(red) plane", s0p1); sys.exit(1)
+    if s1p0 != [0x80, 0, 0, 0, 0, 0, 0, 0] or s1p1 != [0] * 8:
+        print("FAIL: mode2 s1 planes", s1p0, s1p1); sys.exit(1)
+    # colours: base CC=0, stacked CC=0x40; green=2, red=8|0x40=0x48; white=15, empty=0
+    if col != [2, 0x48, 15, 0]:
+        print("FAIL: mode2 colours (want [2,0x48,15,0])", col); sys.exit(1)
+    return t
+
 def main():
     with tempfile.TemporaryDirectory() as d:
         t8 = test_8x8(d)
         t16 = test_16x16(d)
         test_transparent(d)
-        for label, text, want in (("8x8", t8, "bc453d1acfbc7564"), ("16x16", t16, "9aa7cbda911ad0e0")):
+        tm2 = test_mode2(d)
+        for label, text, want in (("8x8", t8, "bc453d1acfbc7564"),
+                                  ("16x16", t16, "9aa7cbda911ad0e0"),
+                                  ("mode2", tm2, "46a3b0fdc6169245")):
             g = golden(text)
             if g != want:
                 print(f"FAIL: {label} golden drift (got {g}, want {want})"); sys.exit(1)
-        print("img2sprites_test PASS: 8x8 + 16x16 (quadrant order) patterns, colour "
-              "extraction, alpha/black transparency, arrays byte-stable")
+        print("img2sprites_test PASS: 8x8 + 16x16 (quadrant order), --mode2 OR-colour "
+              "plane decomposition (CC bit), colour + transparency, arrays byte-stable")
 
 if __name__ == "__main__":
     main()
