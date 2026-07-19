@@ -133,6 +133,9 @@ EX_EXT=audio EX_DBG="Generic MSX-Audio RAM" EX_DBGOFS=0x1000 EX_DBGLEN=8 EX_DBGW
 # playback through H.TIMI. EX_DATALOC clears the replayer's home at 0xB000-0xC50F.
 EX_EXT=audio EX_DATALOC=0xC600 run "$H/moonblaster_01_play.c" "moonblaster.c msx-audio.c" a5 8
 
+# PSG sound effects (ayfx) -- priority SFX mixed into the shared PSG shadow
+run "$H/ayfx_01.c"        "psg.c ayfx.c" a5 8
+
 # ROM formats — 32 KB (data in page 2) and 48 KB (page 0 ours, BIOS gone)
 EX_ROM=32 run "$H/rom32_01_bigrom.c" "" a5 8
 EX_ROM=48 run "$H/rom48_01_page0.c" "" a5 8
