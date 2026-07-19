@@ -13,7 +13,7 @@ match+integrate on already-tuned references). B (trackers: five reference baseli
 characterised, our own VGM player — see [TRACKER_PLAYERS.md](TRACKER_PLAYERS.md)). C (ayFX SFX,
 integrated+measured). **D complete** — D1 tiles (`img2tiles`), D2 SCREEN 5/7/8 + SCREEN 12
 YJK bitmaps (`img2bitmap`), D3 sin/cos/atan tables (`gentables`), D4 optimal palette (`--optimal`),
-D5 hardware sprite banks (`img2sprites`), all golden-tested in CI — see [../Asset-Pipeline.md](../Asset-Pipeline.md). **E complete** — E1
+D5 hardware sprite banks (`img2sprites`), D6 `--zx0` output packing, all golden-tested in CI — see [../Asset-Pipeline.md](../Asset-Pipeline.md). **E complete** — E1
 `game_menu`, E2 `game_seq`, E3 `game_state`, each self-checked on hardware. A developer can now
 compress assets, convert their own art, bake maths tables, play music + SFX, and drive menus /
 cutscenes / nested state — entirely within msxmvl.
@@ -170,6 +170,10 @@ rest extend it.
   per-sprite colour byte. **`--mode2`** decomposes each cell into OR-colour planes (base CC=0 +
   stacked CC=0x40) for true multi-colour MSX2 sprite-mode-2 sprites. Completes the image-converter
   half of gap #3 (what MSXimg does for sprites).
+- **D6 ZX0-packed output** — (**S–M**, SHIPPED: `--zx0` on all three image converters + `tools/zx0pack.py`).
+  Bulk arrays emitted ZX0-compressed (host-side reference encoder; the MSX unpacks with `UnZX0`/
+  `UnZX0_VRAM`), metadata kept raw. Round-trip verified against the reference DZX0 (`zx0pack_test.py`,
+  local-only + CI-skip). The asset pipeline's planned scope is now complete.
 
 ## Category E — Game framework  (ease-of-use; independent)
 

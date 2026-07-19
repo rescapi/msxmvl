@@ -152,6 +152,42 @@ compact classic table) or `i16` above. `atan` maps a slope `i/entries` in `[0,1)
 its angle in the same brad unit (combine with octant reflection for a full `atan2`).
 Each file also `#define`s `<NAME>_ENTRIES`. Pure Python, no numpy.
 
+## Packing the output (`--zx0`)
+
+ROM space, not CPU, is the MSX constraint — a SCREEN 8 image alone is 54 KB. Add `--zx0`
+to any of the image converters to emit the **bulk arrays ZX0-compressed**, unpacked at
+load time by [`UnZX0`](Compression.md):
+
+```sh
+python3 tools/img2bitmap.py  photo.png  photo  8  photo.h  --zx0
+  → const u8 photo_bitmap_zx0[18904] = {...};   // was 54272 B — 65% saved
+    #define PHOTO_BITMAP_LEN 54272              // unpacked length
+```
+
+**Compression runs on the host, at build time, once** — using Einar Saukas's reference
+`zx0` encoder (the format `UnZX0` decodes). **The MSX only decompresses.** So the ROM
+carries the small packed blob plus the tiny decoder, and you unpack at load:
+
+```c
+#include "unzx0.h"
+UnZX0_VRAM(photo_bitmap_zx0, 0x0000, PHOTO_BITMAP_LEN); // stream straight to VRAM,
+                                                        // no full-size RAM buffer
+UnZX0(myart_pattern_zx0, ram_buffer);                   // …or unpack into RAM
+```
+
+Only the bulk arrays are packed; small metadata stays raw so it's usable immediately:
+
+| Tool | packed (`…_zx0` + `…_LEN`) | left raw |
+|---|---|---|
+| `img2bitmap` | `bitmap` | `palette` |
+| `img2sprites` | `pattern` | `colour` |
+| `img2tiles` | `pattern`, `colour`, `nametable` | — |
+
+`--zx0` is opt-in per asset: if your data already fits, don't compress it (you'd only
+add load-time latency). It needs the reference `zx0` encoder available at author time
+(on `PATH`, or built from the reference source via `$ZX0_SRC`) — nothing extra ships or
+runs on the MSX.
+
 ## Correctness
 
 Every tool is deterministic: the converters are self-inverse (after emitting they
@@ -162,13 +198,16 @@ The drift guards run in CI via `docs/examples/run_tools.sh`:
 4bpp+palette, SCREEN 8 GRB332, SCREEN 12 YJK tolerance + golden), `img2sprites_test.py`
 (exact 8×8 + 16×16 patterns incl. the quadrant order, colour, transparency + golden),
 and `gentables_test.py` (sin/cos quarter points, atan shape, i8/i16 selection + golden).
+`--zx0` packing is an author-time step (it needs the reference encoder), so its
+round-trip test `zx0pack_test.py` runs locally and **skips in CI** — its output is
+already covered there by the raw-array goldens plus `unzx0`'s on-target codec corpus.
 
 ## Roadmap
 
 D1 (SCREEN 2 tiles), D2 (SCREEN 5/7/8 **and SCREEN 12 YJK** bitmaps), D3 (sin/cos/atan
-tables), D4 (`--optimal` median-cut palette) and **8×8/16×16 sprite banks**
-(`img2sprites`) are done. Planned extension (same tools): ZX0-packing of the output
-(consuming the `unzx0` decoder).
+tables), D4 (`--optimal` median-cut palette), **8×8/16×16 sprite banks** (`img2sprites`)
+and **`--zx0` output packing** (consuming the `unzx0` decoder) are done — the asset
+pipeline's planned scope is complete.
 
 ## See also
 - [VDP Access](VDP-Access.md) — pushing the pattern/colour/name tables into VRAM.
