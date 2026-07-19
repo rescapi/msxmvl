@@ -66,7 +66,7 @@ Effort key: **S** ≈ a session, **M** ≈ a few, **L** ≈ a sustained campaign
 
 ---
 
-## Category A — Decompression  (unblocks asset-heavy ROMs; highest leverage; IN PROGRESS)
+## Category A — Decompression  (unblocks asset-heavy ROMs; highest leverage; SHIPPED)
 
 RLEp is all msxmvl ships today. Cover the codecs with real MSX usage; each is a bounded,
 pure-logic, byte-exact-oracle module — the shape msxmvl does best, and each a measured win.

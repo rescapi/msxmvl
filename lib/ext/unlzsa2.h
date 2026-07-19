@@ -1,12 +1,9 @@
-// msxmvl EXTENSION module: unlzsa2 -- runtime LZSA2 decompressor (RAM).
+// msxmvl EXTENSION module: unlzsa2 -- runtime LZSA2 decompressor.
 //
-// Decompressor for the LZSA2 format by Emmanuel Marty (format only; independent
-// implementation). Clean-room: the RAM decoder was written from the LZSA2 block
-// format description (token XYZ|LL|MMM, nibble-packed extra lengths, 5/9/13/16-bit
-// and repeat match offsets stored as negative values). The reference `lzsa`
-// compressor and the spke/uniabis Z80 decoders were consulted only for FACTS
-// (the format) and as a behavioural oracle; the code here is our own. See
-// docs/examples/unlzsa2_DOC.md for the measured size/speed comparison.
+// NOT clean-room. The decoder is the size-optimized LZSA2 Z80 routine by spke &
+// uniabis (from Emmanuel Marty's LZSA), transliterated to sdasz80 and wrapped for
+// SDCC -- an altered version used under the zlib licence (full notice + attribution
+// in unlzsa2.c). See docs/examples/unlzsa2_DOC.md for the measured size/speed.
 //
 // Pack your data on the host with the `lzsa` encoder (github.com/emmanuel-marty/
 // lzsa) in raw LZSA2 mode -- `lzsa -f2 -r <in> <out>` -- and decompress on-target
@@ -20,9 +17,10 @@
 // Decompress a raw LZSA2 stream from `src` into RAM at `dst`. The output size is
 // fixed at pack time -- size `dst` yourself; there is no bounds check (matches the
 // reference decoder). The stream's own EOD marker ends decompression. Overlapping
-// back-references (RLE-style runs, e.g. offset 1) are handled. Runs with
-// interrupts left as-is and uses only the main register set (no shadow registers),
-// so it is safe to call from an interrupt-driven program without masking AF'.
+// back-references (RLE-style runs, e.g. offset 1) are handled. Runs from ROM
+// (offset held in IX, no self-modifying code). NOTE: it uses the shadow
+// accumulator AF' as the nibble reservoir, so it is NOT AF'-safe -- do not call it
+// from a context that must preserve AF' (mask/save it around the call if needed).
 void UnLZSA2(const u8* src, u8* dst);
 
 #endif // MSXMVL_UNLZSA2_H

@@ -7,9 +7,21 @@ existing library, the source header says so — e.g. "Derived from MSXgl engine/
 
   MSXgl — Guillaume "Aoineko" Blanchard — https://github.com/aoineko-fr/MSXgl  (CC BY-SA 4.0)
 
-No MSXgl (or other third-party) implementation source was copied into msxmvl. Interfaces/ABIs
-are facts and are not copyrightable expression; the implementations here are independently
-written. See each module header for its specific provenance note.
+With one explicitly-marked exception (`lib/ext/unlzsa2.c`, see below), no MSXgl or other
+third-party *implementation* source was copied into msxmvl. Interfaces/ABIs are facts and are
+not copyrightable expression; the implementations here are independently written. See each
+module header for its specific provenance note.
+
+## LZSA2 decompressor (third-party, zlib licence)
+
+`lib/ext/unlzsa2.c` is **not** clean-room. It is the size-optimized LZSA2 Z80 decompressor by
+**spke (introspec)** with optimizations by **uniabis**, from Emmanuel Marty's LZSA project
+(https://github.com/emmanuel-marty/lzsa). It was transliterated to `sdasz80` syntax and wrapped
+as an SDCC naked function — an *altered version* — and one adaptation was made (the match offset
+is held in a RAM global instead of `IX`, so SDCC's frame pointer is preserved). The LZSA2
+compression algorithms are © 2019 Emmanuel Marty. Used under the **zlib licence**; the full
+licence notice and attribution are retained verbatim in the module's source header, and the
+alteration is plainly marked, per the licence's terms.
 
 ## MoonBlaster
 
