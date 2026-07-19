@@ -89,6 +89,9 @@ run "$H/unlzsa2_01_roundtrip.c"   "unlzsa2.c" a5 8
 
 # State machine (fsm)
 run "$H/fsm_01_states.c"      "fsm.c" a5 8
+run "$H/game_menu_01.c"   "game_menu.c input.c" a5 8
+run "$H/game_seq_01.c"    "game_seq.c" a5 8
+run "$H/game_state_01.c"  "game_state.c" a5 8
 
 # Mutexes (mutex) — header-only inline: no link object
 run "$H/mutex_01_locks.c"     "" a5 8
