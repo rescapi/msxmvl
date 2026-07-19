@@ -11,6 +11,10 @@
 build/
 out/
 
+# Python (asset-pipeline tools)
+__pycache__/
+*.pyc
+
 # Editor / OS
 .DS_Store
 *.swp

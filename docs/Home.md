@@ -37,7 +37,7 @@ where most libraries stop and hand you the bare hardware.
 | [Sprite Transforms](Sprite-FX.md) | `sprite_fx` | flip and mask sprite shapes in RAM |
 | [Double Buffering](Double-Buffering.md) | `display` | draw off-screen, then flip — no flicker |
 | [3D Math](3D-Math.md) | `g3d` | fixed-point multiply and sin/cos tables for software 3D |
-| [Asset Pipeline](Asset-Pipeline.md) | `img2tiles`, `img2bitmap`, `img2sprites`, `gentables` | turn your own PNGs into SCREEN 2 tiles, SCREEN 5/7/8/12 bitmaps or hardware sprites, and bake sin/cos/atan tables — build-time tools, golden-tested |
+| [Asset Pipeline](Asset-Pipeline.md) | `img2tiles`, `img2bitmap`, `img2sprites`, `gentables` | turn your own PNGs into SCREEN 2 tiles, SCREEN 5/7/8/12 bitmaps or hardware sprites (optionally **ZX0-packed**), and bake sin/cos/atan tables — build-time tools, golden-tested |
 
 ## Sound
 
