@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 # img2bitmap_test.py -- golden/drift test for the asset pipeline (tools/img2bitmap.py).
 # Self-contained: generates deterministic images, runs the converter for SCREEN 5
-# (4bpp + palette) and SCREEN 8 (8bpp GRB332), and asserts (1) the built-in
-# round-trip holds, (2) the packed VRAM byte count is right, (3) the emitted arrays
-# are byte-stable (golden). No committed binary asset needed.
+# (4bpp + palette), SCREEN 8 (8bpp GRB332), SCREEN 5 --optimal (median-cut palette)
+# and SCREEN 12 (pure YJK), and asserts (1) the built-in round-trip/tolerance gate
+# holds, (2) the packed VRAM byte count is right, (3) the emitted arrays are
+# byte-stable (golden). No committed binary asset needed.
 import os, subprocess, sys, tempfile, hashlib
 from PIL import Image
 
@@ -38,6 +39,14 @@ def make_opt(path):
     for y in range(8):
         for x in range(16):
             px[x, y] = ((x*16) % 256, (y*32) % 256, (x*8 + y*8) % 256)
+    im.save(path)
+
+def make_yjk(path):
+    # 16x4 smooth gradient (width /4 for YJK groups); YJK reproduces smooth data well.
+    im = Image.new("RGB", (16, 4)); px = im.load()
+    for y in range(4):
+        for x in range(16):
+            px[x, y] = (x * 16, 128, 240 - x * 15)
     im.save(path)
 
 def golden_of(text):
@@ -91,8 +100,20 @@ def main():
         if go != GO:
             print(f"FAIL: optimal golden drift (got {go}, want {GO})"); sys.exit(1)
 
-        print("img2bitmap_test PASS: SCREEN 5 (4bpp+palette) & SCREEN 8 (GRB332) & "
-              "--optimal median-cut palette -- round-trip OK, arrays byte-stable")
+        # SCREEN 12 YJK (pure YJK): 16x4 -> 64 bytes, no palette. The tool's own
+        # tolerance gate (round-trip OK) already ran; check shape + byte-stability.
+        py = os.path.join(d, "y.png"); make_yjk(py)
+        ty = run(py, "y", 12, os.path.join(d, "y.h"))
+        if "y_bitmap[64]" not in ty:
+            print("FAIL: SCREEN 12 byte count wrong\n", ty); sys.exit(1)
+        if "y_palette" in ty:
+            print("FAIL: SCREEN 12 must not emit a palette\n", ty); sys.exit(1)
+        gy = golden_of(ty); GY = "77b15691e3194d02"
+        if gy != GY:
+            print(f"FAIL: SCREEN 12 golden drift (got {gy}, want {GY})"); sys.exit(1)
+
+        print("img2bitmap_test PASS: SCREEN 5 (4bpp+palette), SCREEN 8 (GRB332), "
+              "--optimal palette & SCREEN 12 (YJK) -- round-trip OK, arrays byte-stable")
 
 if __name__ == "__main__":
     main()

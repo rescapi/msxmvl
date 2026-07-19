@@ -154,8 +154,10 @@ rest extend it.
   "your art on screen in ten minutes" drift-guarded doc.
 - **D2 SCREEN 5/7/8 (bitmap/MSX2) image import** — (**M**, SHIPPED: `tools/img2bitmap.py`,
   golden-tested, [../Asset-Pipeline.md](../Asset-Pipeline.md)). 4bpp SCREEN 5/7 (2 px/byte +
-  emitted MSX2 palette in VDP format) and 8bpp SCREEN 8 (fixed GRB332). Both D1 + D2 golden
-  tests now run in CI (`docs/examples/run_tools.sh`).
+  emitted MSX2 palette in VDP format), 8bpp SCREEN 8 (fixed GRB332), and **SCREEN 12 pure YJK**
+  (~19268 colours, MSX2+; RGB→YJK, 4-pixel chroma groups) -- which also closes the "YJK modes:
+  register toggle only" gap on the asset side (`VDP_SetYJK` already exists at runtime). Both D1 +
+  D2 golden tests run in CI (`docs/examples/run_tools.sh`).
 - **D3 maths-table generator** (sin/cos/atan fixed-point — MSXmath's job) — (**S**, SHIPPED:
   `tools/gentables.py`, golden-tested). Binary-angle sin/cos (i8 or i16 by amplitude) + atan
   slope→brad table; pure Python, no numpy. [../Asset-Pipeline.md](../Asset-Pipeline.md).
