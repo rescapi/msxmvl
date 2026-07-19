@@ -5,7 +5,16 @@
 set -uo pipefail
 H="$(cd "$(dirname "$0")" && pwd)"
 fail=0
-run() { if ! "$H/run_example.sh" "$@"; then fail=1; fi; }
+# Optional sharding for CI: set SHARD_TOTAL>0 and SHARD_INDEX in [0,SHARD_TOTAL) to run
+# only this shard's slice of the examples (round-robin by call order). Unset = run all.
+SHARD_TOTAL="${SHARD_TOTAL:-0}"; SHARD_INDEX="${SHARD_INDEX:-0}"; __i=0
+run() {
+	if [ "$SHARD_TOTAL" -gt 0 ] && [ $((__i % SHARD_TOTAL)) -ne "$SHARD_INDEX" ]; then
+		__i=$((__i + 1)); return
+	fi
+	__i=$((__i + 1))
+	if ! "$H/run_example.sh" "$@"; then fail=1; fi
+}
 
 # 3D math (g3d)
 run "$H/g3d_01_mul.c"        "g3d.c"
@@ -162,8 +171,11 @@ EX_EXT=pac EX_DEFS='-DAPPSIGN="MVZ8"' run "$H/pac_01_compat.c" "pac.c sram.c" a5
 #   ./run_example_dos.sh disk_02_write.c  "disk.c" a5 8        # raw sectors (write)
 
 echo
-# drift guard: the code shown in the documentation must be the code we just tested
-if ! bash "$H/verify_docs.sh"; then fail=1; fi
+# drift guard: the code shown in the documentation must be the code we just tested.
+# Skip it when sharded (a partial run) — CI runs it once in its own step.
+if [ "$SHARD_TOTAL" -eq 0 ]; then
+	if ! bash "$H/verify_docs.sh"; then fail=1; fi
+fi
 
 echo
 [ $fail -eq 0 ] && echo "ALL DOC EXAMPLES PASS" || echo "SOME DOC EXAMPLES FAILED"
