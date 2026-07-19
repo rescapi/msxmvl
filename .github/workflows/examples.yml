@@ -3,12 +3,14 @@
 # The DOS examples are not run here: they need an MSX-DOS/Nextor boot disk that cannot ship.
 # Their sources are published and were verified locally; run_all.sh does not include them.
 #
-# Speed: the ~100 openMSX boots (MSX2 + MSX1 passes) dominate the runtime, so
-#  (1) PRs that only touch host-side tools or docs skip that emulator suite — they are
-#      fully covered by the host golden tests + the drift guard, which always run; and
-#  (2) there is no post-merge re-run on `main` (every change lands via a green PR, and a
-#      squash-merge reproduces the exact tree the PR already tested). Use the manual
-#      "Run workflow" button (workflow_dispatch) for an on-demand full run.
+# Speed: the ~100 openMSX boots (MSX2 + MSX1) dominate, so —
+#  * host job (always): host golden tests + the drift guard, and it decides whether the
+#    emulator suite is even needed. PRs that only touch host tools or docs stop here (~15s).
+#  * emulator job: sharded 4 ways (run_all.sh round-robins by SHARD_INDEX/SHARD_TOTAL), so
+#    a full run is ~4x faster in wall-clock. Skipped entirely for host-tool/docs-only PRs.
+#  * examples job: a stable aggregate check (branch protection targets this one name).
+#  * no post-merge re-run on main (a squash-merge reproduces the tree the PR already tested);
+#    use the manual "Run workflow" button for an on-demand full run.
 name: examples
 on:
   pull_request:
@@ -17,10 +19,10 @@ permissions:
   contents: read
   pull-requests: read
 jobs:
-  examples:
+  host:
     runs-on: ubuntu-latest
-    env:
-      SDL_VIDEODRIVER: dummy      # headless: no window, no audio device
+    outputs:
+      need_emu: ${{ steps.detect.outputs.need_emu }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,10 +31,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Run the full emulator suite UNLESS every changed file is a host-side tool or
-          # a doc/markdown file — those are fully covered by the host golden tests and the
-          # drift guard, which run unconditionally below. A manual run always goes full.
-          # Fail safe to "true" (if the file list is empty/unavailable, run everything).
+          # Run the full emulator suite UNLESS every changed file is a host-side tool or a
+          # doc/markdown file — those are covered by the host golden tests + drift guard
+          # here. Manual runs go full. Fail safe to "true" if the file list is unavailable.
           need=true
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             files=$(gh api --paginate \
@@ -53,52 +54,69 @@ jobs:
           echo "need_emu=$need" >> "$GITHUB_OUTPUT"
           echo "emulator suite needed: $need"
 
-      - name: Install SDCC + openMSX
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends sdcc openmsx python3-pil
+      - name: Install Pillow (host golden tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-pil
 
-      - name: Sanity — toolchain present, C-BIOS bootable
-        if: steps.detect.outputs.need_emu == 'true'
+      - name: Asset-pipeline host tools — golden tests
+        run: cd docs/examples && bash run_tools.sh
+
+      - name: Documentation drift guard (docs match tested examples)
+        run: cd docs/examples && bash verify_docs.sh
+
+  emulator:
+    needs: host
+    if: needs.host.outputs.need_emu == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      SDL_VIDEODRIVER: dummy      # headless: no window, no audio device
+      SHARD_TOTAL: 4
+      SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SDCC + openMSX
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends sdcc openmsx
+
+      - name: Sanity — C-BIOS bootable (shard 0)
+        if: matrix.shard == 0
         run: |
           sdcc --version | head -1
-          sdasz80 -h >/dev/null 2>&1 || true
           command -v makebin
-          # openMSX ships C-BIOS (GPL). Fail loudly here if the target machine is missing,
-          # rather than deep inside the example loop.
           timeout 25 openmsx -machine C-BIOS_MSX2 -command "after time 2 { exit 0 }" \
             || { echo "::error::C-BIOS_MSX2 machine not available in this openMSX"; exit 1; }
 
-      - name: Asset-pipeline host tools — golden tests
-        run: |
-          cd docs/examples
-          bash run_tools.sh
+      - name: Documentation examples — MSX2 (shard ${{ matrix.shard }}/4)
+        run: cd docs/examples && bash run_all.sh
 
-      - name: Documentation drift guard (docs match tested examples)
-        if: steps.detect.outputs.need_emu == 'false'
-        run: |
-          # host-tool/docs-only change: the emulator suite is skipped, so run the drift
-          # guard standalone (for full runs it also runs at the end of run_all.sh).
-          cd docs/examples
-          bash verify_docs.sh
+      - name: Documentation examples — MSX1 (shard ${{ matrix.shard }}/4)
+        run: cd docs/examples && bash run_all_msx1.sh
 
-      - name: Documentation examples — MSX2 (+ drift guard)
-        if: steps.detect.outputs.need_emu == 'true'
-        run: |
-          cd docs/examples
-          bash run_all.sh
-
-      - name: Documentation examples — MSX1
-        if: steps.detect.outputs.need_emu == 'true'
-        run: |
-          cd docs/examples
-          bash run_all_msx1.sh
-
-      - name: Banking examples — build + run ASCII-8/ASCII-16 MegaROMs
-        if: steps.detect.outputs.need_emu == 'true'
+      - name: Banking examples — ASCII-8/16 MegaROMs (shard 0)
+        if: matrix.shard == 0
         run: |
           for d in examples/banking/*/; do
             [ -f "$d/run.sh" ] || continue
             echo "== $d"
             bash "$d/run.sh"
           done
+
+  # Stable aggregate status for branch protection: one check named "examples" that is
+  # green iff the host checks passed and the emulator suite passed or was skipped.
+  examples:
+    needs: [host, emulator]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate result
+        run: |
+          echo "host=${{ needs.host.result }}  emulator=${{ needs.emulator.result }}"
+          [ "${{ needs.host.result }}" = "success" ] || { echo "::error::host checks failed"; exit 1; }
+          case "${{ needs.emulator.result }}" in
+            success|skipped) ;;
+            *) echo "::error::emulator suite failed (${{ needs.emulator.result }})"; exit 1 ;;
+          esac
+          echo "OK"

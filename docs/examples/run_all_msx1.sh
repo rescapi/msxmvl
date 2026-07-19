@@ -19,7 +19,15 @@ set -uo pipefail
 H="$(cd "$(dirname "$0")" && pwd)"
 export EX_MACHINE=C-BIOS_MSX1
 fail=0
-run() { if ! "$H/run_example.sh" "$@"; then fail=1; fi; }
+# Optional sharding for CI (see run_all.sh): SHARD_TOTAL>0 + SHARD_INDEX runs a slice.
+SHARD_TOTAL="${SHARD_TOTAL:-0}"; SHARD_INDEX="${SHARD_INDEX:-0}"; __i=0
+run() {
+	if [ "$SHARD_TOTAL" -gt 0 ] && [ $((__i % SHARD_TOTAL)) -ne "$SHARD_INDEX" ]; then
+		__i=$((__i + 1)); return
+	fi
+	__i=$((__i + 1))
+	if ! "$H/run_example.sh" "$@"; then fail=1; fi
+}
 
 # 3D math, fixed-point, integer helpers — pure computation
 run "$H/g3d_01_mul.c"         "g3d.c"
