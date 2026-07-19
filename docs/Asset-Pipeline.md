@@ -38,8 +38,8 @@ large saving — reported on conversion).
 
 ## Bitmap modes — SCREEN 5/7/8 (`img2bitmap`)
 
-For MSX2 bitmap screens, `tools/img2bitmap.py` converts a PNG into **linear VRAM
-data** you copy straight to the screen — no tiles, no name table.
+For MSX2 / MSX2+ bitmap screens, `tools/img2bitmap.py` converts a PNG into **linear
+VRAM data** you copy straight to the screen — no tiles, no name table.
 
 ```sh
 python3 tools/img2bitmap.py  photo.png  photo  8   photo_bitmap.h   # SCREEN 8
@@ -51,6 +51,7 @@ python3 tools/img2bitmap.py  title.png  title  5   title_bitmap.h   # SCREEN 5
 | **5** (GRAPHIC 4) | 256×212, 16 colours | 4 bpp | 2 pixels/byte (hi nibble = left) |
 | **7** (GRAPHIC 5) | 512×212, 16 colours | 4 bpp | 2 pixels/byte |
 | **8** (GRAPHIC 6) | 256×212, 256 colours | 8 bpp | 1 pixel/byte, fixed **GRB332** |
+| **12** | 256×212, ~19268 colours (MSX2+) | 8 bpp | 1 byte/pixel, **YJK** (4-pixel chroma groups) |
 
 SCREEN 5/7 pixels are 4-bit indices into a programmable 16-colour palette; the tool
 quantises to the **MSX2 default palette** and also emits `<name>_palette[32]` in VDP
@@ -58,6 +59,20 @@ register format (2 bytes/colour: `0RRR0BBB`, `00000GGG`) so you can load it. SCR
 has a fixed hardware palette (3 bits green, 3 red, 2 blue), so no palette is emitted —
 each byte is the colour directly. Output alongside the bitmap: `#define <NAME>_W/_H/
 _BPP/_SCREEN`.
+
+### YJK — thousands of colours (SCREEN 12)
+
+```sh
+python3 tools/img2bitmap.py  photo.png  photo  12  photo_bitmap.h   # ~19268 colours
+```
+
+SCREEN 12 (V9958 / MSX2+) is **YJK**: every group of 4 horizontal pixels shares a
+6-bit chroma pair (J, K) while each pixel keeps its own 5-bit luminance (Y), for about
+19268 colours. The tool encodes RGB→YJK (`R=Y+J, G=Y+K, B=(5Y−2J−K)/4`) into one byte
+per pixel — no palette. It is lossy (shared chroma), so it shines on **photographs and
+smooth gradients**, less so on hard-edged pixel art. Width must be a multiple of 4.
+Enter the mode at runtime with `VDP_SetMode(VDP_MODE_GRAPHIC7)` + `VDP_SetYJK(VDP_YJK_ON)`,
+then copy `<name>_bitmap` to VRAM.
 
 ### Optimal palette (`--optimal`)
 
@@ -104,9 +119,10 @@ quarter points, atan shape, i8/i16 selection + golden).
 
 ## Roadmap
 
-D1 (SCREEN 2 tiles), D2 (SCREEN 5/7/8 bitmaps), D3 (sin/cos/atan tables) and D4
-(`--optimal` median-cut palette) are done. Planned extensions (same tools): ZX0-packing
-of the output (consuming the `unzx0` decoder) and 8×8/16×16 sprite banks.
+D1 (SCREEN 2 tiles), D2 (SCREEN 5/7/8 **and SCREEN 12 YJK** bitmaps), D3 (sin/cos/atan
+tables) and D4 (`--optimal` median-cut palette) are done. Planned extensions (same
+tools): ZX0-packing of the output (consuming the `unzx0` decoder) and 8×8/16×16 sprite
+banks.
 
 ## See also
 - [VDP Access](VDP-Access.md) — pushing the pattern/colour/name tables into VRAM.

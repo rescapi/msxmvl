@@ -41,7 +41,7 @@ crypt/localize/fsm/mutex/math/string/memory/fixed_point/g3d/memseg/farmem set.
 | **PSG sound-effects layer** (ayFX) | Yes | No | moderate | games |
 | **General decompressors** (Pletter, ZX0, LZ48, Bitbuster) | Yes | RLEp only | moderate | asset-heavy ROMs |
 | Game framework (pawn + menu, sequence, state, bitfield) | Yes | pawn + fsm | moderate | game devs |
-| YJK modes (SCREEN 10/11/12), SCREEN 9, G3 mirror | Yes (turnkey) | register toggle only | minor | 2+ demos |
+| YJK modes (SCREEN 10/11/12), SCREEN 9, G3 mirror | Yes (turnkey) | ~closed: `VDP_SetYJK` + `img2bitmap` SCREEN 12 (YJK) converter | minor | 2+ demos |
 | Exotic input (paddle, light gun, Mega-drive pad, Ninja Tap, JSX, HID) | Yes | No | minor | niche games |
 | Exotic ROM targets/mappers (NEO-8/16, Yamanooto, ASCII16-X, Popolon-SCC, 64K) | Yes | mainstream only | minor | niche publishers |
 | Tape/cassette + BASIC-binary targets | Yes | No | minor | hobby/legacy |
