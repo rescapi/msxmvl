@@ -88,6 +88,51 @@ The emitted `<name>_palette[32]` is that adapted palette (same VDP format); load
 before drawing the bitmap. Median-cut is deterministic (weighted, tie-broken by
 colour), so the same PNG always yields the same palette and bytes.
 
+## Hardware sprites (`img2sprites`)
+
+Turn a sprite sheet into an **MSX hardware-sprite pattern table**. `tools/img2sprites.py`
+reads a PNG and emits the pattern bytes plus a per-sprite colour.
+
+```sh
+python3 tools/img2sprites.py  hero.png   hero    16   hero_sprites.h    # 16x16 sprites
+python3 tools/img2sprites.py  bullets.png bullet  8   bullet_sprites.h  # 8x8 sprites
+```
+
+MSX sprites are **monochrome per pattern**: a pixel is *on* (drawn in the sprite's
+colour) or *off* (transparent). A pixel is off if it is transparent (alpha < 128) or —
+for images with no alpha — **pure black**. Each `size`×`size` cell of the sheet becomes
+one sprite:
+
+- **8×8** → 8 bytes/sprite (one per row, bit 7 = leftmost pixel).
+- **16×16** → 32 bytes/sprite in the MSX quadrant order **TL, BL, TR, BR** (each an 8×8
+  block) — exactly what the VDP expects, so you copy `<name>_pattern` straight to the
+  sprite pattern table.
+
+`<name>_colour[count]` holds each sprite's colour (the nearest TMS9918 palette index of
+its most-common lit pixel) for the SCREEN 2 sprite-mode-1 attribute byte. Plus
+`#define <NAME>_COUNT/_SIZE/_PLANES` (`_PLANES` is 1 here).
+
+### Multi-colour sprites — `--mode2` (OR colour)
+
+MSX sprites are one colour per pattern, but **MSX2 sprite mode 2** (SCREEN 4–8) builds
+a multi-colour sprite by **stacking monochrome planes** at the same position: each
+plane's per-line colour byte has a **CC (colour-combination) bit** — when set, the VDP
+gives that plane the same priority as the nearest lower-numbered plane whose CC=0, and
+**OR-combines their colour codes where dots overlap**. `--mode2` produces that layout:
+
+```sh
+python3 tools/img2sprites.py  hero.png  hero  16  hero_sprites.h  --mode2
+```
+
+Each cell is decomposed into one monochrome plane per distinct colour (a **uniform**
+`<NAME>_PLANES` count across the sheet, so plane `p` of sprite `s` is at index
+`s*PLANES + p`). The **base plane** (lowest palette index) gets colour byte `colour`
+with **CC=0**; the **stacked planes** get `colour | 0x40` (**CC=1**). The colour byte is
+`EC(7) | CC(6) | IC(5) | 0 | colour(3-0)` — the caller writes it to all 16 lines of that
+plane's mode-2 colour table, and places the `PLANES` consecutive sprite planes at the
+same X/Y. Mode 2 allows 8 sprites per horizontal line, so keep combined sprites to a few
+planes. (Refs: MSX2 Technical Handbook ch.4; msx.org "The OR Color".)
+
 ## Maths tables — sin / cos / atan (`gentables`)
 
 Games need trig, and the Z80 has no FPU — so you bake fixed-point tables at build
@@ -114,15 +159,16 @@ re-derive the data from the source and assert it matches — a bug fails the con
 it never ships silently), and the table generator is a pure function of its arguments.
 The drift guards run in CI via `docs/examples/run_tools.sh`:
 `img2tiles_test.py` (round-trip + dedup 8→2 + golden), `img2bitmap_test.py` (SCREEN 5
-4bpp+palette & SCREEN 8 GRB332 round-trip + golden), and `gentables_test.py` (sin/cos
-quarter points, atan shape, i8/i16 selection + golden).
+4bpp+palette, SCREEN 8 GRB332, SCREEN 12 YJK tolerance + golden), `img2sprites_test.py`
+(exact 8×8 + 16×16 patterns incl. the quadrant order, colour, transparency + golden),
+and `gentables_test.py` (sin/cos quarter points, atan shape, i8/i16 selection + golden).
 
 ## Roadmap
 
 D1 (SCREEN 2 tiles), D2 (SCREEN 5/7/8 **and SCREEN 12 YJK** bitmaps), D3 (sin/cos/atan
-tables) and D4 (`--optimal` median-cut palette) are done. Planned extensions (same
-tools): ZX0-packing of the output (consuming the `unzx0` decoder) and 8×8/16×16 sprite
-banks.
+tables), D4 (`--optimal` median-cut palette) and **8×8/16×16 sprite banks**
+(`img2sprites`) are done. Planned extension (same tools): ZX0-packing of the output
+(consuming the `unzx0` decoder).
 
 ## See also
 - [VDP Access](VDP-Access.md) — pushing the pattern/colour/name tables into VRAM.
