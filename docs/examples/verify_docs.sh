@@ -29,6 +29,7 @@ declare -A PAGE=(
  [compress_01_rlep]=Compression.md
  [unzx0_01_roundtrip]=Compression.md [unzx0_02_vram]=Compression.md [unzx7_01_roundtrip]=Compression.md [unpletter_01_roundtrip]=Compression.md [unlzsa2_01_roundtrip]=Compression.md
  [fsm_01_states]=State-Machines.md [ayfx_01]=Sound-Effects.md [game_menu_01]=Game-Menu.md [game_seq_01]=Game-Sequence.md [game_state_01]=Game-State.md
+ [moonblaster_wave_01]=Sound-MoonBlaster-Wave.md
  [mutex_01_locks]=Mutexes.md
  [localize_01_lang]=Localization.md
  [crypt_01_roundtrip]=Encryption.md
@@ -60,7 +61,7 @@ for ex in "${!PAGE[@]}"; do
     key=$(echo "$line" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     [ -z "$key" ] && continue
     grep -Fq "$key" "$page" || { echo "  DRIFT [$ex -> ${PAGE[$ex]}]: $key"; miss=1; }
-  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|UnZX0|UnZX7|UnPletter|UnLZSA2|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|DiskOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_|ISR_|Sram_|PAC_)[A-Za-z_]*\(' | grep -vE '^\s*//')
+  done < <(sed '/\/\/.*test harness/q' "$H/$ex.c" | grep -E '(G3D_|Display_|MemSeg_|Far_|VDP_|Keyboard_|Mem_|Math_|String_|PSG_|QMN_|Draw_|SpriteFX_|Print_|Tile_|Scroll_|RLEp_|UnZX0|UnZX7|UnPletter|UnLZSA2|FSM_|Mutex_|Loc_|Crypt_|RTC_|DOS_|DiskOS_|Disk_|DiskDOS_|SCC_|MSXMusic_|MSXAudio_|MSXAudio_ADPCM_|MoonBlaster_|MoonBlasterWave_|ISR_|Sram_|PAC_)[A-Za-z_]*\(' | grep -vE '^\s*//')
   [ $miss -ne 0 ] && fail=1
 done
 [ $fail -eq 0 ] && echo "documentation drift check: OK (all example code matches its page)" || { echo "documentation drift check: FAILED"; exit 1; }

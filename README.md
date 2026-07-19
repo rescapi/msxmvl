@@ -48,6 +48,7 @@ where most libraries stop and hand you the bare hardware.
 | [Sound (MSX-MUSIC)](docs/Sound-MSX-Music.md) | `msx-music` | FM synthesis with 15 ready-made instruments (FM-PAC) |
 | [Sound (MSX-AUDIO)](docs/Sound-MSX-Audio.md) | `msx-audio` | the Y8950 — full FM control **and ADPCM sample playback** |
 | [Sound (MoonBlaster)](docs/Sound-MoonBlaster.md) | `moonblaster` | play MoonBlaster 1.4 songs — the original replayer, **interrupt-time-optimised** |
+| [Sound (MoonBlaster Wave)](docs/Sound-MoonBlaster-Wave.md) | `moonblaster_wave` | play MoonBlaster **MoonSound Wave** (.MWM, OPL4 wavetable) songs |
 | [Sound Effects](docs/Sound-Effects.md) | `ayfx` | priority-ranked PSG sound effects mixed over your music (ayFX) |
 
 ## Input

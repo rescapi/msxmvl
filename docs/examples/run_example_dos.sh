@@ -36,6 +36,7 @@ name=$(basename "$EX")
 W=$(mktemp -d); trap 'rm -rf "$W"' EXIT
 cp "$ROOT"/lib/gen/*.h "$W/"
 cp "$ROOT"/lib/ext/*.h "$W/" 2>/dev/null || true
+cp "$(dirname "$EX")"/*.h "$W/" 2>/dev/null || true
 for m in $MODS; do
   for d in ext gen; do
     [ -f "$ROOT/lib/$d/$m" ] && { cp "$ROOT/lib/$d/$m" "$W/"; break; }
@@ -88,7 +89,7 @@ after time ${BW2:-16.0} {
   exit 0
 }
 TCL
-RB=$(timeout 100 "$OMX" -machine "$MACHINE" $DOSEXT -diska "$W/run.dsk" -script "$TCL" 2>&1 | sed -n 's/.*OUT=R=//p' | head -1)
+RB=$(timeout 100 "$OMX" -machine "$MACHINE" $DOSEXT ${EX_EXT:+-ext $EX_EXT} -diska "$W/run.dsk" -script "$TCL" 2>&1 | sed -n 's/.*OUT=R=//p' | head -1)
 rm -f "$TCL"
 
 [ -n "$RB" ] || { echo "  $name: FAIL (no output — .COM never reached _mark_end)"; exit 1; }
