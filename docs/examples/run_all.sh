@@ -169,6 +169,7 @@ EX_EXT=pac EX_DEFS='-DAPPSIGN="MVZ8"' run "$H/pac_01_compat.c" "pac.c sram.c" a5
 #   EX_DOS=1 ./run_example_dos.sh dos_02_fcb.c "dos.c" a5 8    # DOS 1 FCB
 #   ./run_example_dos.sh disk_01_sector.c "disk.c" a5 8        # raw sectors (read)
 #   ./run_example_dos.sh disk_02_write.c  "disk.c" a5 8        # raw sectors (write)
+#   EX_EXT=moonsound ./run_example_dos.sh moonblaster_wave_01.c "moonblaster_wave.c" a5 8  # MoonSound Wave (needs OPL4 YRW801 ROM)
 
 echo
 # drift guard: the code shown in the documentation must be the code we just tested.

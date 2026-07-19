@@ -40,3 +40,12 @@ original work of this library's author, optimised for interrupt time and relicen
 the repository's MIT license. The bundled example song `docs/examples/assets/EXAMP1.MBM`
 ("Example Song") and its sample kit `EXAMPLE.MBK` are by C.v/d Geest, from the original
 MoonBlaster 1.4 disk, included with permission.
+
+`lib/ext/moonblaster_wave_player.asm` is the MoonBlaster for MoonSound *Wave* (OPL4) replayer
+(MBWave 1.01) — likewise the original work of this library's author (R. Schrijvers / Moonsoft),
+relicensed here under the MIT license. It was mechanically converted from the author's GEN80
+source to pasmo syntax by `experiments/mbwave-irqtime/tools/gen2pasmo.py` (equates + macro
+expansion only, no logic change) and is shipped **as-is** (already efficient — see
+`experiments/mbwave-irqtime`), not optimised. `.MWM` example/test songs are third-party
+(Jer Der's MoonSound Wave collection) and are **not** bundled — the measurement corpus is
+fetched locally and git-ignored.
