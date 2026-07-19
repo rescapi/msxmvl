@@ -2,13 +2,20 @@
 # Toolchain is just SDCC + openMSX (openMSX bundles the free C-BIOS), so no copyrighted ROMs.
 # The DOS examples are not run here: they need an MSX-DOS/Nextor boot disk that cannot ship.
 # Their sources are published and were verified locally; run_all.sh does not include them.
+#
+# Speed: the ~100 openMSX boots (MSX2 + MSX1 passes) dominate the runtime, so
+#  (1) PRs that only touch host-side tools or docs skip that emulator suite — they are
+#      fully covered by the host golden tests + the drift guard, which always run; and
+#  (2) there is no post-merge re-run on `main` (every change lands via a green PR, and a
+#      squash-merge reproduces the exact tree the PR already tested). Use the manual
+#      "Run workflow" button (workflow_dispatch) for an on-demand full run.
 name: examples
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 permissions:
   contents: read
+  pull-requests: read
 jobs:
   examples:
     runs-on: ubuntu-latest
@@ -17,12 +24,42 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Decide whether the emulator suite is needed
+        id: detect
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Run the full emulator suite UNLESS every changed file is a host-side tool or
+          # a doc/markdown file — those are fully covered by the host golden tests and the
+          # drift guard, which run unconditionally below. A manual run always goes full.
+          # Fail safe to "true" (if the file list is empty/unavailable, run everything).
+          need=true
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            files=$(gh api --paginate \
+              "repos/${{ github.repository }}/pulls/${{ github.event.pull_request.number }}/files" \
+              -q '.[].filename' || true)
+            if [ -n "$files" ]; then
+              need=false
+              while IFS= read -r f; do
+                [ -z "$f" ] && continue
+                case "$f" in
+                  tools/*.py|docs/examples/*_test.py|docs/*.md|docs/reports/*|NOTICE.md|README.md|LICENSE) ;;
+                  *) need=true ;;
+                esac
+              done <<< "$files"
+            fi
+            echo "changed files:"; echo "$files"
+          fi
+          echo "need_emu=$need" >> "$GITHUB_OUTPUT"
+          echo "emulator suite needed: $need"
+
       - name: Install SDCC + openMSX
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends sdcc openmsx python3-pil
 
       - name: Sanity — toolchain present, C-BIOS bootable
+        if: steps.detect.outputs.need_emu == 'true'
         run: |
           sdcc --version | head -1
           sdasz80 -h >/dev/null 2>&1 || true
@@ -32,22 +69,33 @@ jobs:
           timeout 25 openmsx -machine C-BIOS_MSX2 -command "after time 2 { exit 0 }" \
             || { echo "::error::C-BIOS_MSX2 machine not available in this openMSX"; exit 1; }
 
-      - name: Asset-pipeline host tools — golden tests (img2tiles, img2bitmap)
+      - name: Asset-pipeline host tools — golden tests
         run: |
           cd docs/examples
           bash run_tools.sh
 
+      - name: Documentation drift guard (docs match tested examples)
+        if: steps.detect.outputs.need_emu == 'false'
+        run: |
+          # host-tool/docs-only change: the emulator suite is skipped, so run the drift
+          # guard standalone (for full runs it also runs at the end of run_all.sh).
+          cd docs/examples
+          bash verify_docs.sh
+
       - name: Documentation examples — MSX2 (+ drift guard)
+        if: steps.detect.outputs.need_emu == 'true'
         run: |
           cd docs/examples
           bash run_all.sh
 
       - name: Documentation examples — MSX1
+        if: steps.detect.outputs.need_emu == 'true'
         run: |
           cd docs/examples
           bash run_all_msx1.sh
 
       - name: Banking examples — build + run ASCII-8/ASCII-16 MegaROMs
+        if: steps.detect.outputs.need_emu == 'true'
         run: |
           for d in examples/banking/*/; do
             [ -f "$d/run.sh" ] || continue
